@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Loading...</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <span class="logo" id="nav-logo"></span>
+      <div class="nav-links" id="nav-links">
+        <!-- Links injected by app.js from config.nav.links -->
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <main class="hero">
+    <div class="hero-content">
+      <h1 class="hero-title" id="hero-title"></h1>
+      <p class="hero-sub" id="hero-sub"></p>
+
+      <!-- Waitlist form (fields built by app.js from config.database.fields) -->
+      <form class="waitlist-form" id="waitlist-form" novalidate>
+        <div class="form-fields" id="form-fields"></div>
+        <button type="submit" class="btn-submit" id="submit-btn"></button>
+      </form>
+
+      <!-- Success state -->
+      <div class="success-card" id="success-card" style="display:none">
+        <div class="success-icon">✓</div>
+        <h2 id="success-title"></h2>
+        <p id="success-message"></p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <span id="footer-copy" class="footer-copy"></span>
+      <span id="footer-links">
+        <!-- Links injected by app.js from config.footer.links -->
+      </span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
