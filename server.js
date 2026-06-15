@@ -125,6 +125,10 @@ app.get('/api/waitlist', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 // Serve SPA for non-API routes
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
