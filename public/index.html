@@ -1,57 +1,526 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Loading...</title>
+  <title>Crewlee — Every answer. Every SOP. Every shift.</title>
+  <meta name="description" content="Crewlee turns SOPs, recipes, checklists, and team knowledge into instant answers — so managers spend less time repeating themselves and more time running their restaurant." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg width='32' height='32' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='22' height='16' rx='4' fill='%23D97757'/%3E%3Cpath d='M5 17 L3.5 21.5 L10.5 17 Z' fill='%23D97757'/%3E%3Cpath d='M7 9 L10.5 12.5 L17 6.5' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 </head>
 <body>
 
-  <!-- Nav -->
-  <nav class="nav">
-    <div class="nav-inner">
-      <span class="logo" id="nav-logo"></span>
-      <div class="nav-links" id="nav-links">
-        <!-- Links injected by app.js from config.nav.links -->
+<!-- ── NAV ──────────────────────────────────────────────── -->
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+        <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+        <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="logo-text">Crewlee</span>
+    </div>
+    <a href="#waitlist" class="nav-cta">Join the waitlist</a>
+  </div>
+</nav>
+
+<!-- ── HERO ─────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-bg">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        <span class="badge-text">Founding Program · 3 spots left</span>
+      </div>
+
+      <h1 class="hero-title">
+        Every answer.<br>
+        <span class="accent">Every SOP.</span><br>
+        Every shift.
+      </h1>
+
+      <p class="hero-subtitle">
+        Crewlee turns SOPs, recipes, checklists, and team knowledge into instant answers — so managers spend less time repeating themselves and more time running their business.
+      </p>
+
+      <div class="hero-actions">
+        <a href="#waitlist" class="btn-primary">Join the founding waitlist →</a>
+        <a href="#how-it-works" class="btn-secondary">See how it works</a>
+      </div>
+
+      <div class="hero-proof">
+        <div class="proof-avatars">
+          <div class="proof-avatar">🧑‍🍳</div>
+          <div class="proof-avatar">👩‍💼</div>
+          <div class="proof-avatar">👨‍🍳</div>
+          <div class="proof-avatar">👩‍🍳</div>
+        </div>
+        <p class="proof-text"><strong>47+ restaurant operators</strong> have already joined the waitlist</p>
       </div>
     </div>
-  </nav>
 
-  <!-- Hero -->
-  <main class="hero">
-    <div class="hero-content">
-      <h1 class="hero-title" id="hero-title"></h1>
-      <p class="hero-sub" id="hero-sub"></p>
+    <div class="hero-visual">
+      <div class="float-card fc-tl">
+        <span class="float-card-icon">📚</span>
+        <div>
+          <strong class="float-card-title">SOP Updated</strong>
+          <span class="float-card-sub">Operations Manual v3</span>
+        </div>
+      </div>
+      <div class="float-card fc-tr">
+        <span class="float-card-icon">💬</span>
+        <div>
+          <strong class="float-card-title">Question Answered</strong>
+          <span class="float-card-sub">How do I close the store? · Just now</span>
+        </div>
+      </div>
+      <div class="float-card fc-bl">
+        <span class="float-card-icon">✅</span>
+        <div>
+          <strong class="float-card-title">Checklist Complete</strong>
+          <span class="float-card-sub">Closing · Tonight 11 pm</span>
+        </div>
+      </div>
+      <div class="float-card fc-br">
+        <span class="float-card-icon">📢</span>
+        <div>
+          <strong class="float-card-title">Announcement Sent</strong>
+          <span class="float-card-sub">Seen by 12 staff members</span>
+        </div>
+      </div>
 
-      <!-- Waitlist form (fields built by app.js from config.database.fields) -->
-      <form class="waitlist-form" id="waitlist-form" novalidate>
-        <div class="form-fields" id="form-fields"></div>
-        <button type="submit" class="btn-submit" id="submit-btn"></button>
+      <div class="mockup">
+        <div class="mockup-chrome">
+          <div class="chrome-dots">
+            <span class="chrome-dot dot-red"></span>
+            <span class="chrome-dot dot-yellow"></span>
+            <span class="chrome-dot dot-green"></span>
+          </div>
+          <div class="chrome-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+              <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+              <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Crewlee</span>
+          </div>
+        </div>
+        <div class="mockup-body">
+          <div class="mockup-sidebar">
+            <p class="sidebar-label">Knowledge</p>
+            <div class="sidebar-files">
+              <div class="sidebar-file">
+                <span class="sf-icon">📄</span>
+                <div><div class="sf-name">Operations SOP</div><div class="sf-meta">PDF · 2d ago</div></div>
+              </div>
+              <div class="sidebar-file">
+                <span class="sf-icon">🍳</span>
+                <div><div class="sf-name">Recipe Book</div><div class="sf-meta">PDF · 1w ago</div></div>
+              </div>
+              <div class="sidebar-file">
+                <span class="sf-icon">✅</span>
+                <div><div class="sf-name">Opening Checklist</div><div class="sf-meta">DOC · 3d ago</div></div>
+              </div>
+            </div>
+            <button class="sidebar-add">+ Add file</button>
+          </div>
+          <div class="mockup-chat">
+            <div class="chat-topbar"><p>Ask anything about your restaurant</p></div>
+            <div class="chat-msgs">
+              <div class="msg-user">
+                <div class="bubble-user">How do I close the store tonight?</div>
+              </div>
+              <div class="msg-assistant">
+                <div class="asst-avatar">✨</div>
+                <div class="bubble-assistant">
+                  <p class="bubble-head">Closing procedure:</p>
+                  <p class="bubble-body">
+                    1. Count register &amp; cash report<br>
+                    2. Clean and sanitize kitchen<br>
+                    3. Complete closing checklist<br>
+                    4. Set alarm and lock up
+                  </p>
+                  <p class="bubble-src">📄 From: Closing SOP.pdf</p>
+                </div>
+              </div>
+            </div>
+            <div class="chat-input-row">
+              <div class="chat-input-inner">
+                <span class="chat-placeholder">Ask your team anything...</span>
+                <div class="chat-send">↑</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── WHAT CAN CREWLEE ANSWER? ──────────────────────────── -->
+<section class="section bg-beige">
+  <div class="section-inner">
+    <div class="section-header fade-up">
+      <h2 class="section-title">What can Crewlee answer?</h2>
+      <p class="section-sub">Your team gets instant answers from the procedures, recipes, and policies you already have.</p>
+    </div>
+    <div class="answers-grid">
+      <div class="answer-card fade-up">
+        <div class="answer-q">
+          <div class="answer-q-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+              <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+              <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="answer-bubble">💬 How do I close the store?</div>
+        </div>
+        <div class="answer-reply">
+          <p>Count register, clean kitchen, complete closing checklist, set alarm and lock up.</p>
+          <p class="answer-source">📄 From: Closing SOP.pdf</p>
+        </div>
+      </div>
+      <div class="answer-card fade-up" data-delay="1">
+        <div class="answer-q">
+          <div class="answer-q-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+              <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+              <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="answer-bubble">💬 What's the refund policy?</div>
+        </div>
+        <div class="answer-reply">
+          <p>Full refund within 24 hours. Manager approval required for all exceptions.</p>
+          <p class="answer-source">📄 From: Customer Policy.pdf</p>
+        </div>
+      </div>
+      <div class="answer-card fade-up" data-delay="2">
+        <div class="answer-q">
+          <div class="answer-q-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+              <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+              <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="answer-bubble">💬 How do I clean the espresso machine?</div>
+        </div>
+        <div class="answer-reply">
+          <p>Backflush with blind filter, run cleaning cycle, wipe steam wand.</p>
+          <p class="answer-source">📄 From: Equipment SOP.pdf</p>
+        </div>
+      </div>
+      <div class="answer-card fade-up" data-delay="1">
+        <div class="answer-q">
+          <div class="answer-q-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+              <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+              <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="answer-bubble">💬 What's in the seasonal latte?</div>
+        </div>
+        <div class="answer-reply">
+          <p>Espresso, oat milk, brown sugar syrup, cinnamon — 2 pumps for 12oz.</p>
+          <p class="answer-source">📄 From: Recipe Book.pdf</p>
+        </div>
+      </div>
+      <div class="answer-card fade-up" data-delay="2">
+        <div class="answer-q">
+          <div class="answer-q-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+              <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+              <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="answer-bubble">💬 Who completed today's checklist?</div>
+        </div>
+        <div class="answer-reply">
+          <p>Opening: Sarah (7:02 AM) · Midday: Luis (12:15 PM)</p>
+          <p class="answer-source">📋 From: Daily Checklists</p>
+        </div>
+      </div>
+      <div class="answer-card fade-up" data-delay="3">
+        <div class="answer-q">
+          <div class="answer-q-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+              <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+              <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="answer-bubble">💬 Did everyone read the new SOP?</div>
+        </div>
+        <div class="answer-reply">
+          <p>9 of 12 team members confirmed. Pending: Maria, Jake, Devon.</p>
+          <p class="answer-source">📢 From: Team Updates</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ──────────────────────────────────────── -->
+<section id="how-it-works" class="section bg-white">
+  <div class="section-inner">
+    <div class="section-header fade-up">
+      <h2 class="section-title">Your team's knowledge is <span style="color:var(--charcoal-400)">scattered everywhere.</span></h2>
+      <p class="section-sub">WhatsApp threads. PDFs in email. Shared drives. Managers field the same questions twenty times a day.</p>
+    </div>
+    <div class="problem-grid">
+      <div class="problem-card card-before fade-up">
+        <div class="problem-badge badge-before">😩 Before Crewlee</div>
+        <div class="chaos-zone">
+          <div class="chaos-item"><span>💬</span> WhatsApp group</div>
+          <div class="chaos-item"><span>📎</span> Training PDF</div>
+          <div class="chaos-item"><span>📁</span> Google Drive</div>
+          <div class="chaos-item"><span>📱</span> Text thread</div>
+          <div class="chaos-item"><span>📧</span> Group email</div>
+          <div class="chaos-item"><span>📋</span> Paper binder</div>
+        </div>
+        <p class="problem-note">Information scattered across 6+ places</p>
+      </div>
+      <div class="problem-card card-after fade-up" data-delay="1">
+        <div class="problem-badge badge-after">✨ With Crewlee</div>
+        <div class="organised-list">
+          <div class="organised-item">
+            <div class="org-left"><span class="org-icon">📚</span><span class="org-name">All your SOPs</span></div>
+            <span class="org-badge">
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Searchable
+            </span>
+          </div>
+          <div class="organised-item">
+            <div class="org-left"><span class="org-icon">🍳</span><span class="org-name">Recipes &amp; menus</span></div>
+            <span class="org-badge">
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Up to date
+            </span>
+          </div>
+          <div class="organised-item">
+            <div class="org-left"><span class="org-icon">✅</span><span class="org-name">Daily checklists</span></div>
+            <span class="org-badge">
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Tracked
+            </span>
+          </div>
+          <div class="organised-item">
+            <div class="org-left"><span class="org-icon">📢</span><span class="org-name">Team announcements</span></div>
+            <span class="org-badge">
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Delivered
+            </span>
+          </div>
+        </div>
+        <p class="problem-note" style="margin-top:20px">One place for everything your team needs</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── WHO IT'S FOR ──────────────────────────────────────── -->
+<section class="section bg-cream">
+  <div class="section-inner">
+    <div class="section-header fade-up">
+      <h2 class="section-title">Built for busy <span class="accent">restaurant teams.</span></h2>
+      <p class="section-sub">Whether you're running one location or twenty, Crewlee keeps your team aligned and your operations consistent.</p>
+    </div>
+    <div class="who-grid">
+      <div class="who-card fade-up">
+        <div class="who-icon">🍕</div>
+        <h3 class="who-title">Restaurants</h3>
+        <p class="who-desc">From fine dining to fast casual — keep every shift consistent.</p>
+      </div>
+      <div class="who-card fade-up" data-delay="1">
+        <div class="who-icon">☕</div>
+        <h3 class="who-title">Cafes</h3>
+        <p class="who-desc">Baristas always know the recipe, the policy, and the procedure.</p>
+      </div>
+      <div class="who-card fade-up" data-delay="2">
+        <div class="who-icon">🍔</div>
+        <h3 class="who-title">QSR Chains</h3>
+        <p class="who-desc">One standard across every location, every crew, every shift.</p>
+      </div>
+      <div class="who-card fade-up" data-delay="1">
+        <div class="who-icon">🏪</div>
+        <h3 class="who-title">Franchise Groups</h3>
+        <p class="who-desc">Standardize your playbook and push updates across all franchisees.</p>
+      </div>
+      <div class="who-card fade-up" data-delay="2">
+        <div class="who-icon">🚚</div>
+        <h3 class="who-title">Food Trucks</h3>
+        <p class="who-desc">Your SOPs and recipes on the go — always at your crew's fingertips.</p>
+      </div>
+      <div class="who-card fade-up" data-delay="3">
+        <div class="who-icon">🍜</div>
+        <h3 class="who-title">Multi-Location Operators</h3>
+        <p class="who-desc">One source of truth for every location, every manager, every question.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOUNDING PARTNER ──────────────────────────────────── -->
+<section id="founding" class="section bg-cream">
+  <div class="section-inner">
+    <div class="founding-wrap fade-up">
+      <div class="founding-bg-grad"></div>
+      <div class="founding-dots"></div>
+      <div class="founding-inner">
+        <div>
+          <div class="founding-label">🚀 Founding Restaurant Program</div>
+          <h2 class="founding-title">Be one of the<br>first 10 restaurants.</h2>
+          <p class="founding-desc">We're onboarding a small group of restaurant operators to help shape Crewlee. In exchange, you get benefits that are locked in forever.</p>
+          <div class="progress-meta">
+            <span>Spots filled</span>
+            <strong>7 / 10</strong>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <p class="progress-remaining">3 spots remaining</p>
+          <a href="#waitlist" class="founding-btn">Apply as founding partner →</a>
+        </div>
+        <div class="benefit-list">
+          <div class="benefit-item">
+            <div class="benefit-check"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span class="benefit-text">2 months completely free</span>
+          </div>
+          <div class="benefit-item">
+            <div class="benefit-check"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span class="benefit-text">Lifetime founder pricing — locked in forever</span>
+          </div>
+          <div class="benefit-item">
+            <div class="benefit-check"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span class="benefit-text">Priority onboarding with our team</span>
+          </div>
+          <div class="benefit-item">
+            <div class="benefit-check"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span class="benefit-text">Monthly founder feedback sessions</span>
+          </div>
+          <div class="benefit-item">
+            <div class="benefit-check"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span class="benefit-text">Early access to every new feature</span>
+          </div>
+          <div class="benefit-item">
+            <div class="benefit-check"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6 L5 9 L10 3" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span class="benefit-text">Help shape the product roadmap</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOUNDER STORY ──────────────────────────────────────── -->
+<section class="section bg-white">
+  <div class="section-inner">
+    <div class="founder-inner fade-up">
+      <div class="founder-emoji">🍽️</div>
+      <h2 class="founder-heading">Why we're building Crewlee</h2>
+      <div class="founder-card">
+        <blockquote class="founder-quote">
+          "Restaurant teams shouldn't have to search through WhatsApp messages, PDFs, shared drives, and text chains just to find basic information."
+        </blockquote>
+        <hr class="founder-divider">
+        <p class="founder-body">
+          We're building Crewlee to make communication, knowledge-sharing, and day-to-day operations simpler — so managers can focus on their guests, not their inboxes.
+        </p>
+        <div class="founder-icons">
+          <span>☕</span><span>🍽️</span><span>📋</span><span>🧑‍🍳</span><span>🏪</span><span>📝</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── WAITLIST ───────────────────────────────────────────── -->
+<section id="waitlist" class="section bg-cream">
+  <div class="section-inner">
+    <div class="waitlist-header fade-up">
+      <h2 class="section-title">Join the Founding Waitlist</h2>
+      <p>We're partnering with a small group of restaurant operators to build Crewlee. Apply for early access and help shape the future of restaurant operations.</p>
+    </div>
+    <div class="form-card fade-up">
+      <div class="success-msg" id="successMsg">
+        <div class="success-emoji">🎉</div>
+        <h3 class="success-title">You're on the list!</h3>
+        <p class="success-body">We'll reach out personally to welcome you as a founding partner. Thank you for believing in Crewlee.</p>
+      </div>
+      <form id="waitlistForm">
+        <div class="form-error" id="formError"></div>
+        <div class="form-field">
+          <label class="form-label" for="name">Your name</label>
+          <input class="form-input" type="text" id="name" name="name" placeholder="Alex Johnson" required>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="email">Email address</label>
+          <input class="form-input" type="email" id="email" name="email" placeholder="alex@restaurant.com" required>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="restaurant">Restaurant name</label>
+          <input class="form-input" type="text" id="restaurant" name="restaurant" placeholder="The Corner Bistro" required>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="role">Your role</label>
+          <select class="form-select" id="role" name="role" required>
+            <option value="">Select your role...</option>
+            <option value="Owner">Owner</option>
+            <option value="General Manager">General Manager</option>
+            <option value="Operations Manager">Operations Manager</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <button type="submit" class="form-submit" id="submitBtn">Join the founding waitlist →</button>
+        <p class="form-note">Free to join · No spam · We'll reach out personally</p>
       </form>
+    </div>
+  </div>
+</section>
 
-      <!-- Success state -->
-      <div class="success-card" id="success-card" style="display:none">
-        <div class="success-icon">✓</div>
-        <h2 id="success-title"></h2>
-        <p id="success-message"></p>
+<!-- ── FOOTER ─────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div>
+      <div class="footer-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+          <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+          <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="footer-logo-text">Crewlee</span>
       </div>
+      <p class="footer-tagline">Where restaurant teams find answers, follow procedures, and stay aligned.</p>
     </div>
-  </main>
-
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="footer-inner">
-      <span id="footer-copy" class="footer-copy"></span>
-      <span id="footer-links">
-        <!-- Links injected by app.js from config.footer.links -->
-      </span>
+    <div class="footer-col">
+      <h4>Company</h4>
+      <ul>
+        <li><a href="#waitlist">Join Waitlist</a></li>
+        <li><a href="#founding">Founding Program</a></li>
+        <li><a href="#how-it-works">How It Works</a></li>
+      </ul>
     </div>
-  </footer>
+  </div>
+  <div class="footer-bottom">
+    <p>&copy; 2026 Crewlee. All rights reserved.</p>
+  </div>
+</footer>
 
-  <script src="app.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>

@@ -22,9 +22,6 @@ REGION=$(node -e "const c=require('./config');console.log(c.gcp.region)")
 SERVICE_NAME=$(node -e "const c=require('./config');console.log(c.gcp.serviceName)")
 CLOUD_SQL_INSTANCE=$(node -e "const c=require('./config');console.log(c.gcp.cloudSqlInstance||'')")
 DB_NAME=$(node -e "const c=require('./config');console.log(c.database.name)")
-EMAIL_FROM=$(node -e "const c=require('./config');console.log((process.env.EMAIL_FROM||c.email.from))")
-NOTIFY_EMAIL=$(node -e "const c=require('./config');const e=c.email.notifyEmails||[];console.log(process.env.NOTIFY_EMAIL||e[0]||'')")
-NOTIFY_EMAIL_2=$(node -e "const c=require('./config');const e=c.email.notifyEmails||[];console.log(process.env.NOTIFY_EMAIL_2||e[1]||'')")
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -39,16 +36,12 @@ if [ -z "$CLOUD_SQL_INSTANCE" ]; then
   exit 1
 fi
 
-# ── Prompt for secrets ─────────────────────────────────────────────────────────
-read -rsp "DB password (postgres user): " DB_PASSWORD; echo ""
-read -rsp "Admin panel password:        " ADMIN_PASSWORD; echo ""
-
-read -rp  "SMTP host (leave blank to skip email): " SMTP_HOST
-SMTP_PORT="587"; SMTP_SECURE="false"; SMTP_USER=""; SMTP_PASS=""
-if [ -n "$SMTP_HOST" ]; then
-  read -rp  "SMTP port [587]: " _port; SMTP_PORT="${_port:-587}"
-  read -rsp "SMTP user: " SMTP_USER; echo ""
-  read -rsp "SMTP pass: " SMTP_PASS; echo ""
+# ── Prompt for secrets (skip if already set as env vars) ──────────────────────
+if [ -z "${DB_PASSWORD:-}" ]; then
+  read -rsp "DB password (postgres user): " DB_PASSWORD; echo ""
+fi
+if [ -z "${ADMIN_PASSWORD:-}" ]; then
+  read -rsp "Admin panel password:        " ADMIN_PASSWORD; echo ""
 fi
 
 # ── Build DATABASE_URL (Cloud SQL socket) ──────────────────────────────────────
@@ -65,15 +58,7 @@ gcloud builds submit \
 _REGION=$REGION,\
 _CLOUD_SQL_INSTANCE=$CLOUD_SQL_INSTANCE,\
 _DATABASE_URL=$DATABASE_URL,\
-_ADMIN_PASSWORD=$ADMIN_PASSWORD,\
-_SMTP_HOST=$SMTP_HOST,\
-_SMTP_PORT=$SMTP_PORT,\
-_SMTP_SECURE=$SMTP_SECURE,\
-_SMTP_USER=$SMTP_USER,\
-_SMTP_PASS=$SMTP_PASS,\
-_EMAIL_FROM=$EMAIL_FROM,\
-_NOTIFY_EMAIL=$NOTIFY_EMAIL,\
-_NOTIFY_EMAIL_2=$NOTIFY_EMAIL_2" \
+_ADMIN_PASSWORD=$ADMIN_PASSWORD" \
   .
 
 echo ""

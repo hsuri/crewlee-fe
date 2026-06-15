@@ -1,92 +1,64 @@
-/**
- * CENTRAL CONFIG — edit this file for each new project.
- * Everything (server, frontend, scripts) reads from here.
- * Anything you'd change between projects lives here.
- */
 module.exports = {
 
-  // ── Project identity ─────────────────────────────────────────────────────────
   project: {
-    name: 'My Startup',           // Displayed in nav, title, emails, admin panel
-    slug: 'my-startup',           // Lowercase, no spaces — used for service/DB names
-    tagline: 'Your tagline here', // Hero headline
-    subtext: 'A short description of what you're building and why it matters.',
-    heroSubtext: 'Be the first to know when we launch.',
+    name: 'Crewlee',
+    slug: 'crewlee',
+    tagline: "Your team's brain, always on.",
+    subtext: 'Crewlee turns your SOPs, recipes, and checklists into instant answers for your restaurant team.',
+    heroSubtext: 'Join the founding restaurant program — only 10 spots.',
   },
 
-  // ── Branding ──────────────────────────────────────────────────────────────────
   branding: {
-    // Logo: set logoImage to a path (e.g. '/logo.png' — place file in public/)
-    // or a full URL. Leave empty to use logoText as a text fallback.
     logoImage: '',
-    logoText: 'My Startup',      // Shown if logoImage is empty
-    logoAlt: 'My Startup logo',
-
-    // Colors — all neutral defaults, easy to swap
-    accentColor: '#1a1a1a',      // Primary buttons, links, highlights
-    bgColor: '#ffffff',          // Page background
-    secondaryColor: '#f0f0f0',   // Cards, success badge, subtle elements
-    textColor: '#1a1a1a',
-    mutedColor: '#888888',       // Labels, footer text
+    logoText: 'Crewlee',
+    logoAlt: 'Crewlee',
+    accentColor: '#D97757',
+    bgColor: '#FAF8F4',
+    secondaryColor: '#6B8E23',
+    textColor: '#3A2E2A',
+    mutedColor: '#8C7B75',
     fontFamily: "'Inter', sans-serif",
   },
 
-  // ── Copy / wording ────────────────────────────────────────────────────────────
-  // Change any of these without touching HTML or JS files
   copy: {
-    ctaButton: 'Join Waitlist',
+    ctaButton: 'Join the Waitlist',
     submittingButton: 'Joining...',
-    successTitle: "You're on the list!",
-    successMessage: '',  // Leave empty to auto-generate: "Thanks for your interest in {name}..."
+    successTitle: "You're in!",
+    successMessage: "You're officially on the founding waitlist. We'll be reaching out to a small group of operators as we onboard early partners.",
   },
 
-  // ── Nav links (shown to the right of the logo) ────────────────────────────────
-  // Add { label, href } objects. Admin link is always included at the end.
   nav: {
     links: [
-      // { label: 'About', href: '#about' },
-      // { label: 'Contact', href: 'mailto:hello@mystartup.com' },
+      { label: 'How it works', href: '#how-it-works' },
+      { label: 'Founding Program', href: '#founding' },
     ],
-    showAdminLink: true,
+    showAdminLink: false,
   },
 
-  // ── Footer ────────────────────────────────────────────────────────────────────
   footer: {
-    copyright: '',  // e.g. '© 2025 My Startup. All rights reserved.' — auto-generated if empty
+    copyright: '© 2025 Crewlee. All rights reserved.',
     links: [
-      // { label: 'Privacy', href: '/privacy' },
-      // { label: 'Contact', href: 'mailto:hello@mystartup.com' },
+      { label: 'Contact', href: 'mailto:hello@crewlee.com' },
     ],
-    showAdminLink: true,
+    showAdminLink: false,
   },
 
-  // ── Waitlist form fields ──────────────────────────────────────────────────────
-  // Each field → DB column + form input + admin table column (all auto-generated)
-  // Types: 'text' | 'email' | 'tel' | 'select'
-  // For 'select', provide selectOptions: ['Option1', ...]
   database: {
-    name: 'mystartup',
+    name: 'crewlee',
     table: 'waitlist',
     fields: [
-      { name: 'name',  label: 'Full Name', type: 'text',  required: true  },
-      { name: 'email', label: 'Email',     type: 'email', required: true  },
-      // Add more fields below as needed:
-      // { name: 'company', label: 'Company', type: 'text', required: false },
-      // { name: 'role', label: 'I am a...', type: 'select', required: false, selectOptions: ['Founder', 'Investor', 'Other'] },
+      { name: 'name',       label: 'Your Name',       type: 'text',   required: true  },
+      { name: 'email',      label: 'Email',           type: 'email',  required: true  },
+      { name: 'restaurant', label: 'Restaurant Name', type: 'text',   required: true  },
+      { name: 'role',       label: 'Your Role',       type: 'select', required: true,
+        selectOptions: ['Owner', 'General Manager', 'Operations Manager', 'Other'] },
     ],
   },
 
-  // ── GCP deployment ────────────────────────────────────────────────────────────
   gcp: {
-    projectId: 'my-startup-prod',        // GCP project ID — create in GCP console first
+    projectId: 'pambii-ai-inc',
     region: 'us-central1',
-    serviceName: 'my-startup-waitlist',  // Cloud Run service name
-    cloudSqlInstance: '',                // Filled in after setup.sh: PROJECT:REGION:INSTANCE
-  },
-
-  // ── Email notifications ───────────────────────────────────────────────────────
-  email: {
-    from: 'hello@mystartup.com',
-    notifyEmails: ['founder@mystartup.com'],
+    serviceName: 'crewlee',
+    cloudSqlInstance: 'pambii-ai-inc:us-central1:crewlee',
   },
 };

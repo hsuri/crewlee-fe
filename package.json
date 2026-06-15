@@ -1,7 +1,7 @@
 {
-  "name": "startup-boilerplate",
+  "name": "crewlee",
   "version": "1.0.0",
-  "description": "Waitlist boilerplate — rename and configure via config.js",
+  "description": "Crewlee — Restaurant operations platform waitlist",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,7 +12,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.1.4",
     "express": "^4.18.2",
-    "nodemailer": "^6.9.4",
     "pg": "^8.11.0"
   },
   "devDependencies": {
