@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
-# ── Config-driven deploy to GCP Cloud Run ──────────────────────────────────────
+# ── Deploy crewlee (frontend) to GCP Cloud Run ────────────────────────────────
 #
 # Usage:  ./scripts/deploy.sh
 #
-# Reads project, GCP, and service config from config.js automatically.
-# Only prompts for secrets (DB password, admin password, SMTP).
+# Reads GCP config from config.js automatically.
+# Auto-detects the backend (crewlee-api) Cloud Run URL for the API_URL env var.
 #
 # Prerequisites:
-#   - gcloud CLI authenticated with the target project
-#   - Cloud SQL instance created (run setup.sh first)
-#   - Docker / Cloud Build enabled in the GCP project
+#   - gcloud CLI authenticated
+#   - crewlee-api backend already deployed (run crewlee-be/scripts/deploy.sh first)
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# ── Read config from config.js ─────────────────────────────────────────────────
 PROJECT_ID=$(node -e "const c=require('./config');console.log(c.gcp.projectId)")
-REGION=$(node -e "const c=require('./config');console.log(c.gcp.region)")
+REGION=$(node    -e "const c=require('./config');console.log(c.gcp.region)")
 SERVICE_NAME=$(node -e "const c=require('./config');console.log(c.gcp.serviceName)")
-CLOUD_SQL_INSTANCE=$(node -e "const c=require('./config');console.log(c.gcp.cloudSqlInstance||'')")
-DB_NAME=$(node -e "const c=require('./config');console.log(c.database.name)")
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -30,42 +26,48 @@ echo "  Project: $PROJECT_ID  |  Region: $REGION"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-if [ -z "$CLOUD_SQL_INSTANCE" ]; then
-  echo "ERROR: gcp.cloudSqlInstance is not set in config.js"
-  echo "Run ./scripts/setup.sh first, then copy the instance connection name into config.js"
-  exit 1
-fi
+# ── Resolve backend API URL ────────────────────────────────────────────────────
+if [ -z "${API_URL:-}" ]; then
+  API_URL=$(gcloud run services describe crewlee-api \
+    --project="$PROJECT_ID" \
+    --region="$REGION" \
+    --format="value(status.url)" 2>/dev/null || echo "")
 
-# ── Prompt for secrets (skip if already set as env vars) ──────────────────────
-if [ -z "${DB_PASSWORD:-}" ]; then
-  read -rsp "DB password (postgres user): " DB_PASSWORD; echo ""
+  if [ -n "$API_URL" ]; then
+    echo "  Detected backend URL: $API_URL"
+  else
+    read -rp "Backend API URL (e.g. https://crewlee-api-xxx-uc.a.run.app): " API_URL
+  fi
 fi
-if [ -z "${ADMIN_PASSWORD:-}" ]; then
-  read -rsp "Admin panel password:        " ADMIN_PASSWORD; echo ""
-fi
-
-# ── Build DATABASE_URL (Cloud SQL socket) ──────────────────────────────────────
-ENC_PASSWORD=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" "$DB_PASSWORD")
-DATABASE_URL="postgres://postgres:${ENC_PASSWORD}@/${DB_NAME}?host=/cloudsql/${CLOUD_SQL_INSTANCE}"
 
 echo ""
+echo "  API_URL: $API_URL"
+echo ""
 echo "Submitting Cloud Build..."
+
 gcloud builds submit \
   --project="$PROJECT_ID" \
   --config=cloudbuild.yaml \
   --substitutions=\
 "_SERVICE_NAME=$SERVICE_NAME,\
 _REGION=$REGION,\
-_CLOUD_SQL_INSTANCE=$CLOUD_SQL_INSTANCE,\
-_DATABASE_URL=$DATABASE_URL,\
-_ADMIN_PASSWORD=$ADMIN_PASSWORD" \
+_API_URL=$API_URL" \
   .
 
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" \
+echo "Making service publicly accessible..."
+gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
   --project="$PROJECT_ID" \
   --region="$REGION" \
-  --format="value(status.url)" 2>/dev/null || echo "(run 'gcloud run services describe $SERVICE_NAME' to get URL)")
-echo "  Deployed: $SERVICE_URL"
+  --member=allUsers \
+  --role=roles/run.invoker \
+  --quiet 2>/dev/null || echo "  (IAM binding skipped — may already be set or requires org policy change)"
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+FE_URL=$(gcloud run services describe "$SERVICE_NAME" \
+  --project="$PROJECT_ID" \
+  --region="$REGION" \
+  --format="value(status.url)" 2>/dev/null || echo "(check gcloud run services)")
+echo "  Deployed: $FE_URL"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

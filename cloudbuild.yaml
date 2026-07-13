@@ -21,17 +21,14 @@ steps:
       - '--image=gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
       - '--region=${_REGION}'
       - '--platform=managed'
-      - '--allow-unauthenticated'
-      - '--add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}'
       - >-
-        --set-env-vars=DATABASE_URL=${_DATABASE_URL},ADMIN_PASSWORD=${_ADMIN_PASSWORD}
+        --set-env-vars=API_URL=${_API_URL}
+
 
 substitutions:
   _REGION: us-central1
   _SERVICE_NAME: crewlee
-  _CLOUD_SQL_INSTANCE: ''
-  _DATABASE_URL: ''
-  _ADMIN_PASSWORD: admin123
+  _API_URL: 'http://localhost:8001'
 
 images:
   - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
