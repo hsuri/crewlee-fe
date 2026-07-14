@@ -67,6 +67,14 @@ input, select, textarea { font: inherit; }
 }
 .logo { display: flex; align-items: center; gap: 8px; }
 .logo-text { font-weight: 700; font-size: 18px; color: var(--coral); letter-spacing: -0.01em; }
+.nav-actions { display: flex; align-items: center; gap: 20px; }
+.nav-login {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--charcoal-600);
+  transition: color 0.2s;
+}
+.nav-login:hover { color: var(--charcoal); }
 .nav-cta {
   background: var(--coral);
   color: white;
