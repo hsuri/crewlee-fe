@@ -12,6 +12,17 @@ Frontend for Crewlee — a restaurant knowledge-sharing, scheduling, and announc
 | `/admin` | Password-gated table of waitlist signups + CSV export |
 | `/api/*` | Proxied straight through to `crewlee-be` (`API_URL`) |
 
+## Folder layout
+
+```
+public/
+  pages/    one .html file per route (index, login, app, admin)
+  styles/   one .css file per page, plus tokens.css (shared design tokens)
+  scripts/  one .js file per page, plus scripts/lib/ (small shared modules: api, toast, session)
+```
+
+Still no build step or bundler — `scripts/*.js` load as native `<script type="module">`, so browsers handle the `import`/`export` graph directly.
+
 ## Local dev
 
 Requires `crewlee-be` running first (see its README) — this app has no database access of its own, it just proxies to the backend.
@@ -35,7 +46,7 @@ See `.env.example`:
 
 ## Config
 
-`config.js` holds branding/copy (project name, tagline, colors) used to render the landing page — no secrets or DB schema live here anymore (that moved to the backend's `config.py`).
+`config.js` holds branding/copy (project name, tagline, colors) used to render the landing page — no secrets or DB schema live here anymore (that moved to the backend's `app/core/config.py`).
 
 ## Deployment
 
