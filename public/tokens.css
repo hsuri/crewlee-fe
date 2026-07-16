@@ -1,0 +1,20 @@
+/* Shared design tokens for the app shell (app.html, admin.html, login.html).
+   The marketing landing page (index.html) intentionally uses its own token
+   set in styles.css — see crewlee-fe/CLAUDE.md for why. */
+:root {
+  --accent:         #D97757;
+  --accent-hover:   #C4653E;
+  --accent-light:   #FEF3EC;
+  --navy:           #3A2E2A;
+  --slate:          #5C4A42;
+  --bg:             #FAF8F4;
+  --white:          #FFFFFF;
+  --border:         #E8E0D8;
+  --success:        #6B8E23;
+  --text-primary:   #3A2E2A;
+  --text-secondary: #6B5A52;
+  --text-muted:     #A08C84;
+  --shadow-sm: 0 1px 3px rgba(58,46,42,0.06), 0 1px 2px rgba(58,46,42,0.04);
+  --shadow-md: 0 4px 8px rgba(58,46,42,0.07), 0 2px 4px rgba(58,46,42,0.04);
+  --shadow-lg: 0 8px 24px rgba(58,46,42,0.09), 0 4px 8px rgba(58,46,42,0.05);
+}
