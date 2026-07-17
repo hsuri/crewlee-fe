@@ -26,7 +26,7 @@ Still **no build step, no bundler, no frontend framework** — `scripts/*.js` ar
 |---|---|---|
 | `/` | `pages/index.html` | Marketing/waitlist landing page. Only page that uses `styles/marketing.css` and `scripts/marketing.js`. |
 | `/login` | `pages/login.html` | Email/password login → `POST /api/auth/login` → stores `{token, user}` via `scripts/lib/session.js` → redirects to `/app`. |
-| `/app` | `pages/app.html` | Logged-in dashboard shell. Three tabs: **Schedule** (fully built — see below), "Ask (RAG)" and "Announcements" (placeholders, not implemented). |
+| `/app` | `pages/app.html` | Logged-in dashboard shell. Three tabs: **Schedule** and **Announcements** (fully built — see below), "Ask (RAG)" (placeholder, not implemented). |
 | `/admin` | `pages/admin.html` | Password-gated internal waitlist dashboard (stat cards, table, CSV export of `/api/waitlist`). Unrelated to scheduling. |
 
 ## Design tokens
@@ -37,13 +37,24 @@ Still **no build step, no bundler, no frontend framework** — `scripts/*.js` ar
 
 ## Scheduling UI (`app.html`)
 
-The only fully-built tab. Role-gated at render time (`session.user.role === 'manager'`):
+Role-gated at render time (`session.user.role === 'manager'`), and structured as three layers matching the backend: coverage requirements → generated shifts → employee assignment.
 
-- **Manager view** (`#managerSchedule`) — CSS-grid weekly calendar (employees × 7 days) with drag-and-drop shift reassignment (`PATCH /api/scheduling/shifts/:id`), an open-shifts sidebar, a swap approval queue, week navigation, an "+ Add shift" modal, and "Auto-Build Schedule".
+- **Manager view** (`#managerSchedule`) — CSS-grid weekly calendar (employees × 7 days) with drag-and-drop shift reassignment (`PATCH /api/scheduling/shifts/:id`), an open-shifts sidebar, a swap approval queue, week navigation, an "+ Add shift" modal, "Generate Shifts" (layer 1→2, materializes `coverage_requirements` into open shifts), and "Smart Fill" (layer 2→3, `POST /api/scheduling/auto-build`).
+  - Clicking a day header opens the **Day Plan modal** (`#dayPlanModal`) — add/edit/delete `coverage_requirements` blocks for that day (department, time, count, optional min-confidence gate, "every {weekday}" vs "this week only" scope), with a live filled/required coverage pill per block.
+  - Clicking an employee's name opens the **Employee Card modal** (`#employeeCardModal`) — the Smart Fill profile: confidence slider (1-5), max/min/preferred hours-per-week, an "exclude from Smart Fill" opt-out, manager notes, and read-only weekly availability. `PATCH /api/scheduling/employees/{id}`.
 - **Employee view** (`#employeeSchedule`) — "My Schedule" (offer/drop a shift via `POST /api/scheduling/drop-shift?shiftId=...`, a query param, not a JSON body — matches the backend's actual signature, don't "fix" it to a body param without changing `main.py` too) and "Eligible Shifts" (claim an offered shift).
-- All requests go through the shared `api` client (`scripts/app.js`, built from `scripts/lib/api.js`'s `createApiClient`), which attaches `Authorization: Bearer <token>` from the session and throws on non-2xx so callers can `catch` into a `toast(message, type)` call (`scripts/lib/toast.js`). `type` is `'success'` | `'error'` | `''` (neutral) — pass it explicitly; the toast's colored left border depends on it. `.toast`/`.toast.success`/`.toast.error` are defined in `styles/app.css` — `toast.js` itself carries no CSS.
+- All requests go through the shared `api` client (`scripts/app.js`, built from `scripts/lib/api.js`'s `createApiClient`), which attaches `Authorization: Bearer <token>` from the session and throws on non-2xx so callers can `catch` into a `toast(message, type)` call (`scripts/lib/toast.js`). `type` is `'success'` | `'error'` | `''` (neutral) — pass it explicitly; the toast's colored left border depends on it. `.toast`/`.toast.success`/`.toast.error` are defined in `styles/app.css` — `toast.js` itself carries no CSS. Every click handler that triggers an `api(...)` call wraps it in `try/catch` and toasts `error.message` on failure — including handlers that open a modal via an async render (e.g. the day-header and employee-name clicks), so a stale/unreachable backend surfaces a visible error instead of the modal silently never opening.
 - **The drag-and-drop `PATCH` always resends the full shift** (`employeeId`, `date`, `startTime`, `endTime`), because the backend's `PATCH /api/scheduling/shifts/{id}` currently requires all of those fields even for a pure reassignment (see `crewlee-be/CLAUDE.md`, Known limitations). Don't drop those fields from the payload without a matching backend change.
-- Empty states (open shifts, my schedule, eligible shifts, approval queue) use a shared `.empty-state` class (centered, muted, padded) — reuse it for any new empty-list UI in this file rather than inventing another pattern.
+- Empty states (open shifts, my schedule, eligible shifts, approval queue, day plan, announcements) use a shared `.empty-state` class (centered, muted, padded) — reuse it for any new empty-list UI in this file rather than inventing another pattern.
+
+## Announcements UI (`app.html`)
+
+Role-gated the same way as Schedule:
+
+- **Manager view** (`#managerAnnouncements`) — "+ New Announcement" opens `#announcementModal` (title, body, pinned checkbox) → `POST /api/announcements`. Below it, a card per announcement (title, body, author, date, pinned badge) with a "N/M read" pill (reuses the scheduling Day Plan's `.coverage-pill` empty/partial/full color convention) that opens `#readReceiptsModal` — the full roster with per-person read status, unread-first. A delete button per card (`DELETE /api/announcements/{id}`); no edit endpoint exists on purpose (see `crewlee-be/CLAUDE.md`, Known limitations).
+- **Employee view** (`#employeeAnnouncements`) — same card list; unread announcements get an accent border and an "Acknowledge" button (`POST /api/announcements/{id}/read`) that's replaced with a "✓ Read {date}" indicator once confirmed — read confirmation is a deliberate click, not inferred from viewing the list.
+- Announcement `title`/`body` are the one piece of free-text content in this app that's rendered from another user's input to a broad audience (a manager's post, shown to the whole team), so they're run through a small `escapeHtml` helper in `app.js` before being interpolated into `innerHTML`. Other user-entered strings in this file (department names, requirement notes, employee names) aren't escaped — that's a pre-existing, lower-risk gap elsewhere in this file, not a pattern to copy for new free-text fields.
+- Both load eagerly at page init (`loadAnnouncements()`), same as the schedule data, regardless of which tab is initially active.
 
 ## Conventions
 
@@ -55,7 +66,8 @@ The only fully-built tab. Role-gated at render time (`session.user.role === 'man
 
 - No automated tests, no CI, no TypeScript, no linting.
 - Marketing-vs-app-shell token/button-shape inconsistency — see Design tokens above; intentionally left as-is.
-- "Ask (RAG)" and "Announcements" tabs in `app.html` are placeholder cards only.
+- "Ask (RAG)" tab in `app.html` is a placeholder card only.
+- Most user-entered strings across this file (department names, requirement notes, employee names) are interpolated into `innerHTML` unescaped — a pre-existing gap, not something newly introduced. Only announcement title/body are escaped (see Announcements UI above), since that's the one field broadcasting one user's free text to everyone.
 
 ## Local dev
 

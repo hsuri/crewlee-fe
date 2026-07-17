@@ -283,9 +283,54 @@ function openEmployeeCard(employeeId) {
   document.getElementById('employeeCardForm').dataset.employeeId = employeeId;
   document.getElementById('employeeCardModal').classList.remove('hidden');
 }
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const shortDate = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+async function loadAnnouncements() {
+  const announcements = await api('/api/announcements');
+  if (isManager) renderManagerAnnouncements(announcements); else renderEmployeeAnnouncements(announcements);
+}
+function renderManagerAnnouncements(announcements) {
+  const list = document.getElementById('managerAnnouncementList');
+  list.innerHTML = announcements.length ? announcements.map(a => {
+    const fillRatio = a.totalRecipients ? a.readCount / a.totalRecipients : 0;
+    const fillClass = !a.totalRecipients ? '' : fillRatio >= 1 ? 'full' : fillRatio > 0 ? 'partial' : 'empty';
+    return `<div class="announcement-card ${a.pinned ? 'pinned' : ''}">
+      <div class="announcement-card-head"><h3>${a.pinned ? '📌 ' : ''}${escapeHtml(a.title)}</h3><button type="button" class="icon-btn small" data-delete-announcement="${a.id}" title="Delete" aria-label="Delete">✕</button></div>
+      <p class="announcement-body">${escapeHtml(a.body)}</p>
+      <div class="announcement-meta"><span>${escapeHtml(a.authorName)} · ${shortDate(a.createdAt)}</span><button type="button" class="coverage-pill ${fillClass}" data-open-reads="${a.id}">${a.readCount}/${a.totalRecipients} read</button></div>
+    </div>`;
+  }).join('') : '<span class="empty-state">No announcements posted yet.</span>';
+  list.querySelectorAll('[data-delete-announcement]').forEach(button => button.addEventListener('click', async () => {
+    if (!confirm('Delete this announcement?')) return;
+    try { await api(`/api/announcements/${button.dataset.deleteAnnouncement}`, {method:'DELETE'}); toast('Announcement deleted.', 'success'); await loadAnnouncements(); } catch (error) { toast(error.message, 'error'); }
+  }));
+  list.querySelectorAll('[data-open-reads]').forEach(button => button.addEventListener('click', () => openReadReceipts(Number(button.dataset.openReads)).catch(error => toast(error.message, 'error'))));
+}
+function renderEmployeeAnnouncements(announcements) {
+  const list = document.getElementById('employeeAnnouncementList');
+  list.innerHTML = announcements.length ? announcements.map(a => `<div class="announcement-card ${a.pinned ? 'pinned' : ''} ${a.readByMe ? '' : 'unread'}">
+      <div class="announcement-card-head"><h3>${a.pinned ? '📌 ' : ''}${escapeHtml(a.title)}</h3>${a.readByMe ? '' : '<span class="unread-badge">New</span>'}</div>
+      <p class="announcement-body">${escapeHtml(a.body)}</p>
+      <div class="announcement-meta"><span>${escapeHtml(a.authorName)} · ${shortDate(a.createdAt)}</span>${a.readByMe ? `<span class="read-indicator">✓ Read ${shortDate(a.readAt)}</span>` : `<button type="button" class="button" data-ack="${a.id}">Acknowledge</button>`}</div>
+    </div>`).join('') : '<span class="empty-state">No announcements yet.</span>';
+  list.querySelectorAll('[data-ack]').forEach(button => button.addEventListener('click', async () => {
+    try { await api(`/api/announcements/${button.dataset.ack}/read`, {method:'POST'}); toast('Acknowledged.', 'success'); await loadAnnouncements(); } catch (error) { toast(error.message, 'error'); }
+  }));
+}
+async function openReadReceipts(announcementId) {
+  const reads = await api(`/api/announcements/${announcementId}/reads`);
+  const readCount = reads.filter(r => r.read).length;
+  document.getElementById('readReceiptsSubtitle').textContent = `${readCount}/${reads.length} team member${reads.length === 1 ? '' : 's'} ha${reads.length === 1 ? 's' : 've'} acknowledged this.`;
+  document.getElementById('readReceiptsList').innerHTML = reads.length ? reads.map(r => `<div class="requirement-row"><div>${escapeHtml(r.name)}</div><span class="coverage-pill ${r.read ? 'full' : 'empty'}">${r.read ? `Read ${shortDate(r.readAt)}` : 'Not read'}</span></div>`).join('') : '<span class="empty-state">No other team members yet.</span>';
+  document.getElementById('readReceiptsModal').classList.remove('hidden');
+}
+
 async function loadQueue() { const requests = await api('/api/scheduling/swap-requests'); const queue = document.getElementById('swapQueue'); queue.innerHTML = requests.length ? requests.map(r => `<div class="queue-item"><strong>${r.requestingEmployeeName}</strong> → <strong>${r.targetEmployeeName}</strong><br>${r.date} · ${r.startTime}–${r.endTime}<div class="queue-actions"><button class="button" data-decision="true" data-id="${r.id}" data-approve="true">Approve</button><button class="button danger" data-decision="true" data-id="${r.id}" data-approve="false">Deny</button></div></div>`).join('') : '<span class="empty-state">No active approvals.</span>'; queue.querySelectorAll('[data-decision]').forEach(button => button.addEventListener('click', async () => { try { await api(`/api/scheduling/swap-requests/${button.dataset.id}/decision`, {method:'POST', body:JSON.stringify({approve:button.dataset.approve === 'true'})}); await loadManagerSchedule(); } catch(error) { toast(error.message, 'error'); }})); }
 async function loadEmployeeSchedule() { const shifts = await api(`/api/scheduling/shifts?weekStart=${isoDate(currentWeek)}`); const mine = shifts.filter(s => s.employeeId === session.user.id); document.getElementById('myScheduleFeed').innerHTML = mine.length ? mine.map(s => `<div class="my-shift"><strong>${s.date}</strong> · ${s.startTime}–${s.endTime} (${s.roleRequired.toUpperCase()})<br><button class="button danger" data-drop="${s.id}" ${s.status === 'Pending_Swap' ? 'disabled' : ''}>${s.status === 'Pending_Swap' ? 'Swap pending' : 'Offer shift'}</button></div>`).join('') : '<span class="empty-state">No shifts scheduled this week.</span>'; document.querySelectorAll('[data-drop]').forEach(button => button.addEventListener('click', async () => { try { const result = await api(`/api/scheduling/drop-shift?shiftId=${button.dataset.drop}`, {method:'POST'}); toast(result.matches.length ? `${result.matches.length} eligible teammate${result.matches.length === 1 ? '' : 's'} can now claim it.` : 'No eligible coworkers available for a swap right now.', result.matches.length ? 'success' : ''); await loadEmployeeSchedule(); } catch(error) { toast(error.message, 'error'); }})); const eligible = await api('/api/scheduling/eligible-shifts'); document.getElementById('eligibleFeed').innerHTML = eligible.length ? eligible.map(s => `<div class="feed-item"><strong>${s.date}</strong> · ${s.startTime}–${s.endTime}<br>${s.roleRequired.toUpperCase()} · you meet every scheduling rule<br><button class="button" data-claim="${s.swapRequestId}">Claim shift</button></div>`).join('') : '<span class="empty-state">No eligible shifts right now.</span>'; document.querySelectorAll('[data-claim]').forEach(button => button.addEventListener('click', async () => { try { await api(`/api/scheduling/swap-requests/${button.dataset.claim}/claim`, {method:'POST'}); toast('Claim sent to your manager for approval.', 'success'); await loadEmployeeSchedule(); } catch(error) { toast(error.message, 'error'); }})); }
 const isManager = session.user?.role === 'manager'; document.getElementById(isManager ? 'managerSchedule' : 'employeeSchedule').classList.remove('hidden');
+document.getElementById(isManager ? 'managerAnnouncements' : 'employeeAnnouncements').classList.remove('hidden');
+loadAnnouncements().catch(e => toast(e.message, 'error'));
 if (isManager) { document.getElementById('departmentsSettingsRow').classList.remove('hidden'); loadManagerSchedule().catch(e => toast(e.message, 'error')); loadTemplates().catch(e => toast(e.message, 'error'));
   const savedDensity = localStorage.getItem('crewleeDensity') || 'cozy';
   document.getElementById('densitySelect').value = savedDensity;
@@ -341,6 +386,20 @@ if (isManager) { document.getElementById('departmentsSettingsRow').classList.rem
       toast(`${result.created.length} shift(s) generated${result.skippedCount ? ` · ${result.skippedCount} already covered` : ''}.`, 'success');
       await loadManagerSchedule();
     } catch (e) { toast(e.message, 'error'); }
+  });
+  document.getElementById('newAnnouncement').addEventListener('click', () => { document.getElementById('announcementForm').reset(); document.getElementById('announcementModal').classList.remove('hidden'); });
+  document.getElementById('announcementForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await api('/api/announcements', {method:'POST', body:JSON.stringify({
+        title: document.getElementById('annTitle').value,
+        body: document.getElementById('annBody').value,
+        pinned: document.getElementById('annPinned').checked,
+      })});
+      closeModal('announcementModal');
+      toast('Announcement posted.', 'success');
+      await loadAnnouncements();
+    } catch (error) { toast(error.message, 'error'); }
   });
   document.getElementById('empConfidence').addEventListener('input', (e) => { document.getElementById('confidenceValueLabel').textContent = e.target.value; });
   document.getElementById('employeeCardForm').addEventListener('submit', async (e) => {

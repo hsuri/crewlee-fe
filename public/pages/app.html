@@ -64,9 +64,13 @@
       </div>
 
       <div class="panel" id="panel-announcements">
-        <div class="placeholder-card">
-          <h2>Announcements</h2>
-          <p>Manager announcements will show up here — this is a placeholder tab.</p>
+        <div id="managerAnnouncements" class="hidden">
+          <div class="schedule-toolbar"><h2>Team announcements</h2><div><button class="button" id="newAnnouncement">+ New announcement</button></div></div>
+          <div class="announcement-list" id="managerAnnouncementList"></div>
+        </div>
+        <div id="employeeAnnouncements" class="hidden">
+          <div class="schedule-toolbar"><h2>Team announcements</h2></div>
+          <div class="announcement-list" id="employeeAnnouncementList"></div>
         </div>
       </div>
     </div>
@@ -118,6 +122,28 @@
         </div>
         <div class="modal-actions"><button type="button" class="button secondary" data-close="employeeCardModal">Cancel</button><button class="button" type="submit">Save</button></div>
       </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="announcementModal">
+      <form class="modal" id="announcementForm">
+        <h2>New announcement</h2>
+        <p>Posts to the whole team. Employees must explicitly acknowledge it — you'll see who has and hasn't yet.</p>
+        <div class="form-grid">
+          <label class="field full"><span>Title</span><input id="annTitle" type="text" required /></label>
+          <label class="field full"><span>Message</span><textarea id="annBody" rows="5" required></textarea></label>
+          <label class="field full checkbox-field"><input id="annPinned" type="checkbox" /> <span>Pin to top</span></label>
+        </div>
+        <div class="modal-actions"><button type="button" class="button secondary" data-close="announcementModal">Cancel</button><button class="button" type="submit">Post announcement</button></div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="readReceiptsModal">
+      <div class="modal">
+        <h2>Read receipts</h2>
+        <p id="readReceiptsSubtitle"></p>
+        <div class="requirement-list" id="readReceiptsList"></div>
+        <div class="modal-actions"><button type="button" class="button secondary" data-close="readReceiptsModal">Close</button></div>
+      </div>
     </div>
 
     <div class="overlay hidden" id="settingsOverlay">
