@@ -52,8 +52,8 @@
 
       <div class="panel" id="panel-schedule">
         <div id="managerSchedule" class="hidden">
-          <div class="schedule-toolbar"><h2>Weekly schedule</h2><div class="toolbar-group"><select class="toolbar-select" id="departmentFilter"><option value="">All departments</option></select> <button class="button secondary" id="previousWeek">←</button> <button class="button secondary" id="nextWeek">→</button> <select class="toolbar-select" id="densitySelect"><option value="cozy">Cozy</option><option value="compact">Compact</option><option value="spacious">Spacious</option></select> <button class="button secondary" id="toggleSidebar">Hide panel</button> <button class="button secondary" id="newShift">+ Add shift</button> <select class="toolbar-select" id="templateSelect"><option value="">Apply template…</option></select> <button class="button secondary" id="saveTemplate">Save as template</button> <button class="button" id="autoBuild">Smart Fill</button> <button class="button secondary hidden" id="publishWeek">Publish week<span class="publish-badge hidden" id="publishBadge">0</span></button></div></div>
-          <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted)">Click a shift to select it, then <strong>C</strong>/<strong>V</strong> to copy/paste onto a focused cell, <strong>Delete</strong> to remove it. Arrow keys move the focused cell. Hold <strong>Shift</strong> while dragging a shift to duplicate it.</p>
+          <div class="schedule-toolbar"><h2>Weekly schedule</h2><div class="toolbar-group"><select class="toolbar-select" id="departmentFilter"><option value="">All departments</option></select> <button class="button secondary" id="previousWeek">←</button> <button class="button secondary" id="nextWeek">→</button> <select class="toolbar-select" id="densitySelect"><option value="cozy">Cozy</option><option value="compact">Compact</option><option value="spacious">Spacious</option></select> <button class="button secondary" id="toggleSidebar">Hide panel</button> <button class="button secondary" id="newShift">+ Add shift</button> <select class="toolbar-select" id="templateSelect"><option value="">Apply template…</option></select> <button class="button secondary" id="saveTemplate">Save as template</button> <button class="button secondary" id="generateShifts">Generate Shifts</button> <button class="button" id="autoBuild">Smart Fill</button> <button class="button secondary hidden" id="publishWeek">Publish week<span class="publish-badge hidden" id="publishBadge">0</span></button></div></div>
+          <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted)">Click a day to plan staffing requirements, or an employee's name to edit their Smart Fill profile. Click a shift to select it, then <strong>C</strong>/<strong>V</strong> to copy/paste onto a focused cell, <strong>Delete</strong> to remove it. Arrow keys move the focused cell. Hold <strong>Shift</strong> while dragging a shift to duplicate it.</p>
           <div class="schedule-layout"><div class="calendar"><div class="calendar-grid" id="managerGrid"></div></div><aside class="queue"><h3>Open shifts</h3><div id="openShiftList"></div><h3 style="margin-top:22px">Approval queue</h3><div id="swapQueue"></div></aside></div>
         </div>
         <div id="employeeSchedule" class="employee-schedule hidden">
@@ -73,6 +73,52 @@
 
     <div class="modal-backdrop hidden" id="shiftModal"><form class="modal" id="shiftForm"><h2>Add a shift</h2><p>Create an open shift for Auto-Build, or assign it to a teammate now.</p><div class="form-grid"><label class="field"><span>Department</span><select id="shiftDepartment"></select></label><label class="field"><span>Team member</span><select id="shiftEmployee"><option value="">Open shift — assign later</option></select></label><label class="field full"><span>Date</span><input id="shiftDate" type="date" required /></label><label class="field"><span>Start</span><input id="shiftStart" type="time" value="09:00" required /></label><label class="field"><span>End</span><input id="shiftEnd" type="time" value="17:00" required /></label></div><div class="modal-actions"><button type="button" class="button secondary" data-close="shiftModal">Cancel</button><button class="button" type="submit">Create shift</button></div></form></div>
     <div class="modal-backdrop hidden" id="availabilityModal"><form class="modal" id="availabilityForm"><h2>Set weekly availability</h2><p>Only shifts fully inside these windows can be offered to you.</p><div class="availability-list" id="availabilityRows"></div><div class="modal-actions"><button type="button" class="button secondary" data-close="availabilityModal">Cancel</button><button class="button" type="submit">Save availability</button></div></form></div>
+
+    <div class="modal-backdrop hidden" id="dayPlanModal">
+      <div class="modal wide">
+        <h2 id="dayPlanTitle">Day plan</h2>
+        <p>Define staffing needs for this day by department and time block. <strong>Generate Shifts</strong> turns these into open shifts; <strong>Smart Fill</strong> assigns people to them.</p>
+        <div class="requirement-list" id="dayPlanList"></div>
+        <form class="form-grid" id="dayPlanForm">
+          <label class="field"><span>Department</span><select id="reqDepartment"></select></label>
+          <label class="field"><span>Start</span><input id="reqStart" type="time" value="17:00" required /></label>
+          <label class="field"><span>End</span><input id="reqEnd" type="time" value="21:00" required /></label>
+          <label class="field"><span>Count needed</span><input id="reqCount" type="number" min="1" value="1" required /></label>
+          <label class="field"><span>Min confidence</span><select id="reqMinConfidence"><option value="">Any</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option><option value="5">5+</option></select></label>
+          <label class="field full"><span>Notes</span><input id="reqNotes" type="text" placeholder="Optional" /></label>
+          <div class="field full applies-to">
+            <span>Applies to</span>
+            <label><input type="radio" name="reqScope" value="recurring" checked /> Every <span id="reqDayName">this weekday</span></label>
+            <label><input type="radio" name="reqScope" value="week" /> This week only</label>
+          </div>
+          <div class="modal-actions full"><button type="button" class="button secondary" data-close="dayPlanModal">Close</button><button type="button" class="button secondary hidden" id="cancelReqEdit">Cancel edit</button><button class="button" type="submit" id="reqSubmitBtn">Add requirement</button></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="employeeCardModal">
+      <form class="modal" id="employeeCardForm">
+        <h2 id="employeeCardName">Team member</h2>
+        <p class="employee-card-meta" id="employeeCardMeta"></p>
+        <div class="form-grid">
+          <label class="field full">
+            <span>Scheduling confidence — <strong id="confidenceValueLabel">3</strong>/5</span>
+            <input id="empConfidence" type="range" min="1" max="5" step="1" value="3" />
+            <div class="confidence-scale"><span>New / trainee</span><span>Highly experienced</span></div>
+          </label>
+          <label class="field"><span>Max hours/week</span><input id="empMaxHours" type="number" min="0" step="0.5" required /></label>
+          <label class="field"><span>Min hours/week</span><input id="empMinHours" type="number" min="0" step="0.5" required /></label>
+          <label class="field"><span>Preferred hours/week</span><input id="empPreferredHours" type="number" min="0" step="0.5" placeholder="No target" /></label>
+          <label class="field full checkbox-field"><input id="empOptOut" type="checkbox" /> <span>Exclude from Smart Fill — this employee can still be assigned manually</span></label>
+          <label class="field full"><span>Manager notes</span><textarea id="empNotes" rows="3" placeholder="Optional"></textarea></label>
+          <div class="field full">
+            <span>Weekly availability</span>
+            <div class="availability-summary" id="empAvailabilitySummary"></div>
+          </div>
+        </div>
+        <div class="modal-actions"><button type="button" class="button secondary" data-close="employeeCardModal">Cancel</button><button class="button" type="submit">Save</button></div>
+      </form>
+    </div>
 
     <div class="overlay hidden" id="settingsOverlay">
       <div class="settings-panel">
