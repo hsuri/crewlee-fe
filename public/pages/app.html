@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Crewlee</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles/tokens.css" />
+    <link rel="stylesheet" href="/styles/app.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-container">
+        <div class="logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+            <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+            <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Crewlee
+        </div>
+        <div class="nav-right">
+          <div class="user-chip">
+            <span class="user-name" id="userName">—</span>
+            <span class="role-badge" id="userRole">—</span>
+          </div>
+          <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container">
+      <div class="tabs">
+        <div class="tab active" data-panel="rag">Ask (RAG)</div>
+        <div class="tab" data-panel="schedule">Schedule</div>
+        <div class="tab" data-panel="announcements">Announcements</div>
+      </div>
+
+      <div class="panel active" id="panel-rag">
+        <div class="placeholder-card">
+          <h2>Ask Crewlee</h2>
+          <p>SOPs, recipes, and answers are coming soon — this is a placeholder tab.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-schedule">
+        <div id="managerSchedule" class="hidden">
+          <div class="schedule-toolbar"><h2>Weekly schedule</h2><div class="toolbar-group"><select class="toolbar-select" id="departmentFilter"><option value="">All departments</option></select> <button class="button secondary" id="previousWeek">←</button> <button class="button secondary" id="nextWeek">→</button> <select class="toolbar-select" id="densitySelect"><option value="cozy">Cozy</option><option value="compact">Compact</option><option value="spacious">Spacious</option></select> <button class="button secondary" id="toggleSidebar">Hide panel</button> <button class="button secondary" id="newShift">+ Add shift</button> <select class="toolbar-select" id="templateSelect"><option value="">Apply template…</option></select> <button class="button secondary" id="saveTemplate">Save as template</button> <button class="button" id="autoBuild">Smart Fill</button> <button class="button secondary hidden" id="publishWeek">Publish week<span class="publish-badge hidden" id="publishBadge">0</span></button></div></div>
+          <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted)">Click a shift to select it, then <strong>C</strong>/<strong>V</strong> to copy/paste onto a focused cell, <strong>Delete</strong> to remove it. Arrow keys move the focused cell. Hold <strong>Shift</strong> while dragging a shift to duplicate it.</p>
+          <div class="schedule-layout"><div class="calendar"><div class="calendar-grid" id="managerGrid"></div></div><aside class="queue"><h3>Open shifts</h3><div id="openShiftList"></div><h3 style="margin-top:22px">Approval queue</h3><div id="swapQueue"></div></aside></div>
+        </div>
+        <div id="employeeSchedule" class="employee-schedule hidden">
+          <div class="schedule-toolbar"><h2>My schedule</h2><div><button class="button secondary" id="editAvailability">Availability</button> <button class="button secondary" id="refreshEmployee">Refresh</button></div></div>
+          <div class="tabs"><div class="tab active" data-employee-panel="my">My Schedule</div><div class="tab" data-employee-panel="eligible">Eligible Shifts</div></div>
+          <div class="feed" id="myScheduleFeed"></div><div class="feed hidden" id="eligibleFeed"></div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-announcements">
+        <div class="placeholder-card">
+          <h2>Announcements</h2>
+          <p>Manager announcements will show up here — this is a placeholder tab.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="shiftModal"><form class="modal" id="shiftForm"><h2>Add a shift</h2><p>Create an open shift for Auto-Build, or assign it to a teammate now.</p><div class="form-grid"><label class="field"><span>Department</span><select id="shiftDepartment"></select></label><label class="field"><span>Team member</span><select id="shiftEmployee"><option value="">Open shift — assign later</option></select></label><label class="field full"><span>Date</span><input id="shiftDate" type="date" required /></label><label class="field"><span>Start</span><input id="shiftStart" type="time" value="09:00" required /></label><label class="field"><span>End</span><input id="shiftEnd" type="time" value="17:00" required /></label></div><div class="modal-actions"><button type="button" class="button secondary" data-close="shiftModal">Cancel</button><button class="button" type="submit">Create shift</button></div></form></div>
+    <div class="modal-backdrop hidden" id="availabilityModal"><form class="modal" id="availabilityForm"><h2>Set weekly availability</h2><p>Only shifts fully inside these windows can be offered to you.</p><div class="availability-list" id="availabilityRows"></div><div class="modal-actions"><button type="button" class="button secondary" data-close="availabilityModal">Cancel</button><button class="button" type="submit">Save availability</button></div></form></div>
+
+    <div class="overlay hidden" id="settingsOverlay">
+      <div class="settings-panel">
+        <h2>Settings</h2>
+        <div class="settings-row">
+          <div class="settings-label">Name</div>
+          <div class="settings-value" id="settingsName">—</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">Email</div>
+          <div class="settings-value" id="settingsEmail">—</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">Role</div>
+          <div class="settings-value" id="settingsRole">—</div>
+        </div>
+        <div class="settings-row hidden" id="departmentsSettingsRow">
+          <div class="settings-label">Departments</div>
+          <div class="dept-list" id="departmentsList"></div>
+          <div class="dept-add-row">
+            <input id="newDeptName" type="text" placeholder="New department name" />
+            <select id="newDeptCategory"><option value="foh">FOH</option><option value="boh">BOH</option></select>
+            <button type="button" class="button secondary" id="addDeptBtn">Add</button>
+          </div>
+        </div>
+        <button class="logout-btn" id="logoutBtn">Log Out</button>
+      </div>
+    </div>
+
+    <script type="module" src="/scripts/app.js"></script>
+  </body>
+</html>

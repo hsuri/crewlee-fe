@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Admin — Crewlee</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles/tokens.css" />
+    <link rel="stylesheet" href="/styles/admin.css" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-container">
+        <div class="logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <rect x="1" y="1" width="22" height="16" rx="4" fill="#D97757"/>
+            <path d="M5 17 L3.5 21.5 L10.5 17 Z" fill="#D97757"/>
+            <path d="M7 9 L10.5 12.5 L17 6.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <a href="/">Crewlee</a>
+        </div>
+        <button class="logout hidden" id="logoutBtn">Logout</button>
+      </div>
+    </nav>
+
+    <div class="container">
+      <!-- Login -->
+      <div id="loginScreen" class="login-screen hidden">
+        <div class="login-box">
+          <h1>Admin Access</h1>
+          <p>Sign in to view waitlist signups.</p>
+          <form class="login-form" id="loginForm">
+            <input type="password" id="password" placeholder="Enter admin password" required />
+            <button type="submit">Sign In</button>
+            <div class="error hidden" id="loginError"></div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Dashboard -->
+      <div id="dashboard" class="dashboard hidden">
+        <div class="dashboard-header">
+          <h1>Waitlist</h1>
+          <p>Everyone who has joined the Crewlee founding waitlist.</p>
+        </div>
+
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-label">Total Signups</div>
+            <div class="stat-value" id="totalCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Owners</div>
+            <div class="stat-value" id="ownerCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">General Managers</div>
+            <div class="stat-value" id="gmCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Ops Managers</div>
+            <div class="stat-value" id="opsCount">0</div>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <button class="export-btn" id="exportBtn">Export CSV</button>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Restaurant</th>
+                <th>Role</th>
+                <th>Joined</th>
+              </tr>
+            </thead>
+            <tbody id="waitlistTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/scripts/admin.js"></script>
+  </body>
+</html>
