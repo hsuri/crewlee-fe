@@ -38,21 +38,21 @@
 
     <div class="container">
       <div class="tabs">
-        <div class="tab active" data-panel="rag">Ask (RAG)</div>
-        <div class="tab" data-panel="schedule">Schedule</div>
+        <div class="tab active" data-panel="schedule">Schedule</div>
         <div class="tab" data-panel="announcements">Announcements</div>
+        <div class="tab" data-panel="rag">Ask (RAG)</div>
       </div>
 
-      <div class="panel active" id="panel-rag">
+      <div class="panel" id="panel-rag">
         <div class="placeholder-card">
           <h2>Ask Crewlee</h2>
           <p>SOPs, recipes, and answers are coming soon — this is a placeholder tab.</p>
         </div>
       </div>
 
-      <div class="panel" id="panel-schedule">
+      <div class="panel active" id="panel-schedule">
         <div id="managerSchedule" class="hidden">
-          <div class="schedule-toolbar"><h2>Weekly schedule</h2><div class="toolbar-group"><select class="toolbar-select" id="departmentFilter"><option value="">All departments</option></select> <button class="button secondary" id="previousWeek">←</button> <button class="button secondary" id="nextWeek">→</button> <select class="toolbar-select" id="densitySelect"><option value="cozy">Cozy</option><option value="compact">Compact</option><option value="spacious">Spacious</option></select> <button class="button secondary" id="toggleSidebar">Hide panel</button> <button class="button secondary" id="newShift">+ Add shift</button> <select class="toolbar-select" id="templateSelect"><option value="">Apply template…</option></select> <button class="button secondary" id="saveTemplate">Save as template</button> <button class="button secondary" id="generateShifts">Generate Shifts</button> <button class="button" id="autoBuild">Smart Fill</button> <button class="button secondary hidden" id="publishWeek">Publish week<span class="publish-badge hidden" id="publishBadge">0</span></button></div></div>
+          <div class="schedule-toolbar"><h2>Weekly schedule</h2><div class="toolbar-group"><div class="toolbar-group"><select class="toolbar-select" id="departmentFilter"><option value="">All departments</option></select> <button class="button secondary" id="previousWeek" aria-label="Previous week">←</button> <button class="button secondary" id="nextWeek" aria-label="Next week">→</button> <select class="toolbar-select" id="densitySelect"><option value="cozy">Cozy</option><option value="compact">Compact</option><option value="spacious">Spacious</option></select> <button class="button secondary" id="toggleSidebar">Hide panel</button></div><div class="toolbar-divider"></div><div class="toolbar-group"><button class="button" id="newShift">+ Add shift</button> <select class="toolbar-select" id="templateSelect"><option value="">Apply template…</option></select> <button class="button secondary" id="saveTemplate">Save as template</button> <button class="button secondary" id="generateShifts">Generate Shifts</button> <button class="button" id="autoBuild">Smart Fill</button> <button class="button hidden" id="publishWeek">Publish week<span class="publish-badge hidden" id="publishBadge">0</span></button></div></div></div>
           <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted)">Click a day to plan staffing requirements, or an employee's name to edit their Smart Fill profile. Click a shift to select it, then <strong>C</strong>/<strong>V</strong> to copy/paste onto a focused cell, <strong>Delete</strong> to remove it. Arrow keys move the focused cell. Hold <strong>Shift</strong> while dragging a shift to duplicate it.</p>
           <div class="schedule-layout"><div class="calendar"><div class="calendar-grid" id="managerGrid"></div></div><aside class="queue"><h3>Open shifts</h3><div id="openShiftList"></div><h3 style="margin-top:22px">Approval queue</h3><div id="swapQueue"></div></aside></div>
         </div>

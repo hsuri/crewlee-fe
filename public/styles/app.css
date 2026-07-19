@@ -130,6 +130,7 @@ body {
 }
 .schedule-toolbar h2 { margin: 0; font-size: 22px; }
 .toolbar-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar-divider { width: 1px; height: 22px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
 .button {
   border: 0;
   border-radius: 8px;
@@ -259,8 +260,8 @@ body {
   padding: 0 5px;
   margin-left: 6px;
   border-radius: 100px;
-  background: var(--accent);
-  color: #fff;
+  background: #fff;
+  color: var(--accent);
   font-size: 11px;
   font-weight: 700;
 }
@@ -289,12 +290,45 @@ body {
   padding: 32px 12px;
 }
 
+.loading-state {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 32px 12px;
+}
+.calendar-grid .loading-state { grid-column: 1 / -1; }
+.loading-state::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Confirm/prompt dialogs (scripts/lib/dialog.js) — reuse .modal-backdrop/.modal, add just the
+   message styling those don't already define. */
+.dialog-modal { width: min(100%, 420px); }
+.dialog-modal .dialog-message { margin: 0 0 20px; font-size: 14px; color: var(--text-primary); }
+
 .employee-schedule { max-width: 720px; }
 
-.toast {
+.toast-stack {
   position: fixed;
   right: 20px;
   bottom: 20px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  align-items: flex-end;
+}
+.toast {
   max-width: 360px;
   padding: 12px 16px;
   border-radius: 8px;
@@ -303,7 +337,6 @@ body {
   color: #fff;
   font-size: 13px;
   box-shadow: var(--shadow-lg);
-  z-index: 300;
   animation: toastIn 0.2s ease-out;
 }
 .toast.error { border-left-color: #e5776a; }
@@ -348,16 +381,20 @@ body {
   color: var(--text-secondary);
 }
 .field.full { grid-column: 1 / -1; }
-.field input, .field select {
+.field input, .field select, .field textarea {
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
   font: 14px inherit;
   color: var(--text-primary);
   background: #fff;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(217,119,87,0.12);
+}
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
 .availability-list { display: grid; gap: 9px; }
