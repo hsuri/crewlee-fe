@@ -150,10 +150,18 @@ async function loadTemplates() {
   document.getElementById('templateSelect').innerHTML = '<option value="">Apply template…</option>' + managerTemplates.map(t => `<option value="${t.id}">${t.name} (${t.shiftCount})</option>`).join('');
 }
 function renderDepartmentsSettings() {
-  document.getElementById('departmentsList').innerHTML = managerDepartments.length ? managerDepartments.map(d => `<div class="dept-row"><input type="text" value="${d.name}" data-dept-id="${d.id}" /><span class="role-badge">${d.roleCategory.toUpperCase()}</span><button type="button" class="button secondary" data-save-dept="${d.id}">Save</button></div>`).join('') : '<span class="empty-state">No departments yet.</span>';
+  document.getElementById('departmentsList').innerHTML = managerDepartments.length ? managerDepartments.map(d => `<div class="dept-row"><input type="text" value="${d.name}" data-dept-id="${d.id}" /><span class="role-badge">${d.roleCategory.toUpperCase()}</span><button type="button" class="button secondary" data-save-dept="${d.id}">Save</button><button type="button" class="button danger" data-delete-dept="${d.id}">Delete</button></div>`).join('') : '<span class="empty-state">No departments yet.</span>';
   document.querySelectorAll('[data-save-dept]').forEach(button => button.addEventListener('click', async () => {
     const input = document.querySelector(`input[data-dept-id="${button.dataset.saveDept}"]`);
     try { await api(`/api/scheduling/departments/${button.dataset.saveDept}`, {method:'PATCH', body:JSON.stringify({name:input.value})}); await loadDepartments(); renderDepartmentsSettings(); toast('Department renamed.', 'success'); await loadManagerSchedule(); } catch (error) { toast(error.message, 'error'); }
+  }));
+  document.querySelectorAll('[data-delete-dept]').forEach(button => button.addEventListener('click', async () => {
+    const departmentId = Number(button.dataset.deleteDept);
+    const department = managerDepartments.find(d => d.id === departmentId);
+    const employeeCount = managerEmployees.filter(e => e.departmentId === departmentId).length;
+    const message = `Delete "${department.name}"? ${employeeCount ? `${employeeCount} employee${employeeCount === 1 ? '' : 's'} in it will become unassigned, and any` : 'Any'} staffing requirements for it will be deleted too. This can't be undone.`;
+    if (!(await confirmDialog(message, { danger: true, confirmLabel: 'Delete department' }))) return;
+    try { await api(`/api/scheduling/departments/${departmentId}`, {method:'DELETE'}); await loadDepartments(); renderDepartmentsSettings(); toast('Department deleted.', 'success'); await loadManagerSchedule(); } catch (error) { toast(error.message, 'error'); }
   }));
 }
 const closeModal = id => document.getElementById(id).classList.add('hidden');
