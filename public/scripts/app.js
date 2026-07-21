@@ -388,9 +388,26 @@ function renderRagDocuments() {
   list.innerHTML = ragDocuments.length ? ragDocuments.map(d => `<div class="rag-doc-card">
       <div class="rag-doc-head"><h3>${escapeHtml(d.title)}</h3><span class="role-badge">${d.docType}</span></div>
       <div class="announcement-meta"><span>${escapeHtml(d.uploadedByName)} · updated ${shortDate(d.updatedAt)}</span>
-        <span><button type="button" class="button secondary" data-edit-doc="${d.id}">Edit</button> <button type="button" class="button danger" data-delete-doc="${d.id}">Delete</button></span>
+        <span><a href="/api/rag/documents/${d.id}/file" class="button secondary" data-download-doc="${d.id}" title="Download ${escapeHtml(d.originalFilename)}">Download</a> <button type="button" class="button secondary" data-edit-doc="${d.id}">Edit</button> <button type="button" class="button danger" data-delete-doc="${d.id}">Delete</button></span>
       </div>
     </div>`).join('') : '<span class="empty-state">No documents yet — add a recipe, SOP, training doc, or license to get started.</span>';
+  // A plain <a href> can't carry the Authorization bearer header, so intercept the click and
+  // fetch through the authenticated api client instead, then hand the browser a blob URL.
+  list.querySelectorAll('[data-download-doc]').forEach(link => link.addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(link.getAttribute('href'), { headers: { Authorization: `Bearer ${session.token}` } });
+      if (!response.ok) throw new Error('Download failed.');
+      const blob = await response.blob();
+      const doc = ragDocuments.find(d => d.id === Number(link.dataset.downloadDoc));
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = doc?.originalFilename || 'document';
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) { toast(error.message, 'error'); }
+  }));
   list.querySelectorAll('[data-edit-doc]').forEach(button => button.addEventListener('click', () => {
     openRagDocumentModal(Number(button.dataset.editDoc)).catch(error => toast(error.message, 'error'));
   }));
@@ -399,19 +416,36 @@ function renderRagDocuments() {
     try { await api(`/api/rag/documents/${button.dataset.deleteDoc}`, {method:'DELETE'}); toast('Document deleted.', 'success'); await loadRagDocuments(); } catch (error) { toast(error.message, 'error'); }
   }));
 }
+function setRagSourceMode(mode) {
+  document.getElementById('ragDocFileField').classList.toggle('hidden', mode !== 'file');
+  document.getElementById('ragDocTextField').classList.toggle('hidden', mode !== 'text');
+  document.querySelector(`input[name="ragSource"][value="${mode}"]`).checked = true;
+}
+document.querySelectorAll('input[name="ragSource"]').forEach(radio => radio.addEventListener('change', () => setRagSourceMode(radio.value)));
+
 async function openRagDocumentModal(documentId) {
   const form = document.getElementById('ragDocumentForm');
   form.reset();
+  const currentFileLabel = document.getElementById('ragDocCurrentFile');
   if (documentId) {
     const doc = await api(`/api/rag/documents/${documentId}`);
     form.dataset.editId = documentId;
     document.getElementById('ragDocumentModalTitle').textContent = 'Edit document';
     document.getElementById('ragDocTitle').value = doc.title;
     document.getElementById('ragDocType').value = doc.docType;
-    document.getElementById('ragDocContent').value = doc.content;
+    if (doc.fileType === 'txt') {
+      setRagSourceMode('text');
+      document.getElementById('ragDocContentText').value = doc.content;
+      currentFileLabel.textContent = 'Currently saved as pasted text. Edit it above, or switch to "Upload a file" to replace it with a PDF/Word file instead.';
+    } else {
+      setRagSourceMode('file');
+      currentFileLabel.textContent = `Current file: ${doc.originalFilename}. Choose a new file only if you want to replace it.`;
+    }
   } else {
     delete form.dataset.editId;
     document.getElementById('ragDocumentModalTitle').textContent = 'Add document';
+    setRagSourceMode('file');
+    currentFileLabel.textContent = '';
   }
   document.getElementById('ragDocumentModal').classList.remove('hidden');
 }
@@ -446,17 +480,27 @@ if (isManager) { document.getElementById('departmentsSettingsRow').classList.rem
     e.preventDefault();
     const form = e.target;
     const editId = form.dataset.editId;
-    const body = {
-      title: document.getElementById('ragDocTitle').value,
-      docType: document.getElementById('ragDocType').value,
-      content: document.getElementById('ragDocContent').value,
-    };
+    const title = document.getElementById('ragDocTitle').value;
+    const source = form.querySelector('input[name="ragSource"]:checked').value;
+    const body = new FormData();
+    body.append('title', title);
+    body.append('docType', document.getElementById('ragDocType').value);
+    if (source === 'file') {
+      const file = document.getElementById('ragDocFile').files[0];
+      if (file) body.append('file', file);
+      else if (!editId) { toast('Choose a file to upload.', 'error'); return; }
+    } else {
+      const text = document.getElementById('ragDocContentText').value.trim();
+      if (!text) { toast('Enter some text to save.', 'error'); return; }
+      const slug = (title.trim() || 'document').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'document';
+      body.append('file', new File([text], `${slug}.txt`, { type: 'text/plain' }));
+    }
     await withBusy(form.querySelector('button[type="submit"]'), editId ? 'Saving…' : 'Adding…', async () => {
       try {
         if (editId) {
-          await api(`/api/rag/documents/${editId}`, {method:'PUT', body:JSON.stringify(body)});
+          await api(`/api/rag/documents/${editId}`, {method:'PUT', body});
         } else {
-          await api('/api/rag/documents', {method:'POST', body:JSON.stringify(body)});
+          await api('/api/rag/documents', {method:'POST', body});
         }
         closeModal('ragDocumentModal');
         toast(editId ? 'Document updated.' : 'Document added.', 'success');

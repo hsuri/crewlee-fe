@@ -148,7 +148,7 @@
     <div class="modal-backdrop hidden" id="ragDocumentModal">
       <form class="modal" id="ragDocumentForm">
         <h2 id="ragDocumentModalTitle">Add document</h2>
-        <p>Upload a recipe, SOP, training doc, or license for employees to ask about. Saving over an existing document replaces its content — there's no version history.</p>
+        <p>Upload a recipe, SOP, training doc, or license (PDF, Word, or pasted text) for employees to ask about. Saving new content over an existing document replaces it — there's no version history.</p>
         <div class="form-grid">
           <label class="field"><span>Title</span><input id="ragDocTitle" type="text" required /></label>
           <label class="field"><span>Type</span>
@@ -160,7 +160,14 @@
               <option value="other" selected>Other</option>
             </select>
           </label>
-          <label class="field full"><span>Content</span><textarea id="ragDocContent" rows="10" required placeholder="Paste or type the document's full text here."></textarea></label>
+          <div class="field full applies-to">
+            <span>Source</span>
+            <label><input type="radio" name="ragSource" value="file" checked /> Upload a file (PDF or Word)</label>
+            <label><input type="radio" name="ragSource" value="text" /> Paste text</label>
+          </div>
+          <label class="field full" id="ragDocFileField"><span>File</span><input id="ragDocFile" type="file" accept=".pdf,.docx" /></label>
+          <label class="field full hidden" id="ragDocTextField"><span>Content</span><textarea id="ragDocContentText" rows="10" placeholder="Paste or type the document's full text here."></textarea></label>
+          <p class="field full" id="ragDocCurrentFile" style="margin:0;font-size:12px;color:var(--text-muted)"></p>
         </div>
         <div class="modal-actions"><button type="button" class="button secondary" data-close="ragDocumentModal">Cancel</button><button class="button" type="submit">Save document</button></div>
       </form>

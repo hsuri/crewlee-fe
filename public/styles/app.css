@@ -143,6 +143,7 @@ body {
 }
 .button:hover { background: var(--accent-hover); }
 .button:active { transform: translateY(1px); }
+a.button { display: inline-block; text-decoration: none; }
 .button.secondary {
   background: #fff;
   color: var(--text-primary);
