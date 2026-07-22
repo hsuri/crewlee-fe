@@ -44,9 +44,17 @@
       </div>
 
       <div class="panel" id="panel-rag">
-        <div class="placeholder-card">
-          <h2>Ask Crewlee</h2>
-          <p>SOPs, recipes, and answers are coming soon — this is a placeholder tab.</p>
+        <div class="schedule-toolbar"><h2>Ask Crewlee</h2></div>
+        <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted)">Ask about recipes, SOPs, training material, or licenses your manager has added — answers are grounded in your restaurant's own documents, with sources cited below.</p>
+        <form class="rag-ask-form" id="ragAskForm">
+          <input id="ragQuestion" type="text" placeholder="e.g. How long should I lather soap when washing hands?" required />
+          <button class="button" type="submit">Ask</button>
+        </form>
+        <div id="ragAnswer"></div>
+
+        <div id="ragManagerSection" class="hidden">
+          <div class="schedule-toolbar" style="margin-top:28px"><h2>Knowledge base</h2><button class="button" id="newRagDocument">+ Add document</button></div>
+          <div class="rag-doc-list" id="ragDocumentList"></div>
         </div>
       </div>
 
@@ -134,6 +142,34 @@
           <label class="field full checkbox-field"><input id="annPinned" type="checkbox" /> <span>Pin to top</span></label>
         </div>
         <div class="modal-actions"><button type="button" class="button secondary" data-close="announcementModal">Cancel</button><button class="button" type="submit">Post announcement</button></div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="ragDocumentModal">
+      <form class="modal" id="ragDocumentForm">
+        <h2 id="ragDocumentModalTitle">Add document</h2>
+        <p>Upload a recipe, SOP, training doc, or license (PDF, Word, or pasted text) for employees to ask about. Saving new content over an existing document replaces it — there's no version history.</p>
+        <div class="form-grid">
+          <label class="field"><span>Title</span><input id="ragDocTitle" type="text" required /></label>
+          <label class="field"><span>Type</span>
+            <select id="ragDocType">
+              <option value="recipe">Recipe</option>
+              <option value="sop">SOP</option>
+              <option value="training">Training</option>
+              <option value="license">License</option>
+              <option value="other" selected>Other</option>
+            </select>
+          </label>
+          <div class="field full applies-to">
+            <span>Source</span>
+            <label><input type="radio" name="ragSource" value="file" checked /> Upload a file (PDF or Word)</label>
+            <label><input type="radio" name="ragSource" value="text" /> Paste text</label>
+          </div>
+          <label class="field full" id="ragDocFileField"><span>File</span><input id="ragDocFile" type="file" accept=".pdf,.docx" /></label>
+          <label class="field full hidden" id="ragDocTextField"><span>Content</span><textarea id="ragDocContentText" rows="10" placeholder="Paste or type the document's full text here."></textarea></label>
+          <p class="field full" id="ragDocCurrentFile" style="margin:0;font-size:12px;color:var(--text-muted)"></p>
+        </div>
+        <div class="modal-actions"><button type="button" class="button secondary" data-close="ragDocumentModal">Cancel</button><button class="button" type="submit">Save document</button></div>
       </form>
     </div>
 

@@ -370,12 +370,144 @@ async function openReadReceipts(announcementId) {
   document.getElementById('readReceiptsModal').classList.remove('hidden');
 }
 
+function renderRagAnswer(result) {
+  const answerBox = document.getElementById('ragAnswer');
+  const citationsHtml = result.citations && result.citations.length
+    ? `<div class="rag-citations"><strong>Sources:</strong><ul>${result.citations.map(c => `<li><strong>${escapeHtml(c.documentTitle)}</strong> — "${escapeHtml(c.citedText)}"</li>`).join('')}</ul></div>`
+    : '';
+  answerBox.innerHTML = `<div class="rag-answer-card"><p>${escapeHtml(result.answer)}</p>${citationsHtml}</div>`;
+}
+let ragDocuments = [];
+async function loadRagDocuments() {
+  document.getElementById('ragDocumentList').innerHTML = '<div class="loading-state">Loading documents…</div>';
+  ragDocuments = await api('/api/rag/documents');
+  renderRagDocuments();
+}
+function renderRagDocuments() {
+  const list = document.getElementById('ragDocumentList');
+  list.innerHTML = ragDocuments.length ? ragDocuments.map(d => `<div class="rag-doc-card">
+      <div class="rag-doc-head"><h3>${escapeHtml(d.title)}</h3><span class="role-badge">${d.docType}</span></div>
+      <div class="announcement-meta"><span>${escapeHtml(d.uploadedByName)} · updated ${shortDate(d.updatedAt)}</span>
+        <span><a href="/api/rag/documents/${d.id}/file" class="button secondary" data-download-doc="${d.id}" title="Download ${escapeHtml(d.originalFilename)}">Download</a> <button type="button" class="button secondary" data-edit-doc="${d.id}">Edit</button> <button type="button" class="button danger" data-delete-doc="${d.id}">Delete</button></span>
+      </div>
+    </div>`).join('') : '<span class="empty-state">No documents yet — add a recipe, SOP, training doc, or license to get started.</span>';
+  // A plain <a href> can't carry the Authorization bearer header, so intercept the click and
+  // fetch through the authenticated api client instead, then hand the browser a blob URL.
+  list.querySelectorAll('[data-download-doc]').forEach(link => link.addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(link.getAttribute('href'), { headers: { Authorization: `Bearer ${session.token}` } });
+      if (!response.ok) throw new Error('Download failed.');
+      const blob = await response.blob();
+      const doc = ragDocuments.find(d => d.id === Number(link.dataset.downloadDoc));
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = doc?.originalFilename || 'document';
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) { toast(error.message, 'error'); }
+  }));
+  list.querySelectorAll('[data-edit-doc]').forEach(button => button.addEventListener('click', () => {
+    openRagDocumentModal(Number(button.dataset.editDoc)).catch(error => toast(error.message, 'error'));
+  }));
+  list.querySelectorAll('[data-delete-doc]').forEach(button => button.addEventListener('click', async () => {
+    if (!(await confirmDialog('Delete this document? Employees will no longer be able to ask about it.', { danger: true, confirmLabel: 'Delete document' }))) return;
+    try { await api(`/api/rag/documents/${button.dataset.deleteDoc}`, {method:'DELETE'}); toast('Document deleted.', 'success'); await loadRagDocuments(); } catch (error) { toast(error.message, 'error'); }
+  }));
+}
+function setRagSourceMode(mode) {
+  document.getElementById('ragDocFileField').classList.toggle('hidden', mode !== 'file');
+  document.getElementById('ragDocTextField').classList.toggle('hidden', mode !== 'text');
+  document.querySelector(`input[name="ragSource"][value="${mode}"]`).checked = true;
+}
+document.querySelectorAll('input[name="ragSource"]').forEach(radio => radio.addEventListener('change', () => setRagSourceMode(radio.value)));
+
+async function openRagDocumentModal(documentId) {
+  const form = document.getElementById('ragDocumentForm');
+  form.reset();
+  const currentFileLabel = document.getElementById('ragDocCurrentFile');
+  if (documentId) {
+    const doc = await api(`/api/rag/documents/${documentId}`);
+    form.dataset.editId = documentId;
+    document.getElementById('ragDocumentModalTitle').textContent = 'Edit document';
+    document.getElementById('ragDocTitle').value = doc.title;
+    document.getElementById('ragDocType').value = doc.docType;
+    if (doc.fileType === 'txt') {
+      setRagSourceMode('text');
+      document.getElementById('ragDocContentText').value = doc.content;
+      currentFileLabel.textContent = 'Currently saved as pasted text. Edit it above, or switch to "Upload a file" to replace it with a PDF/Word file instead.';
+    } else {
+      setRagSourceMode('file');
+      currentFileLabel.textContent = `Current file: ${doc.originalFilename}. Choose a new file only if you want to replace it.`;
+    }
+  } else {
+    delete form.dataset.editId;
+    document.getElementById('ragDocumentModalTitle').textContent = 'Add document';
+    setRagSourceMode('file');
+    currentFileLabel.textContent = '';
+  }
+  document.getElementById('ragDocumentModal').classList.remove('hidden');
+}
+
 async function loadQueue() { const requests = await api('/api/scheduling/swap-requests'); const queue = document.getElementById('swapQueue'); queue.innerHTML = requests.length ? requests.map(r => `<div class="queue-item"><strong>${r.requestingEmployeeName}</strong> → <strong>${r.targetEmployeeName}</strong><br>${r.date} · ${r.startTime}–${r.endTime}<div class="queue-actions"><button class="button" data-decision="true" data-id="${r.id}" data-approve="true">Approve</button><button class="button danger" data-decision="true" data-id="${r.id}" data-approve="false">Deny</button></div></div>`).join('') : '<span class="empty-state">No active approvals.</span>'; queue.querySelectorAll('[data-decision]').forEach(button => button.addEventListener('click', async () => { try { await api(`/api/scheduling/swap-requests/${button.dataset.id}/decision`, {method:'POST', body:JSON.stringify({approve:button.dataset.approve === 'true'})}); await loadManagerSchedule(); } catch(error) { toast(error.message, 'error'); }})); }
 async function loadEmployeeSchedule() { document.getElementById('myScheduleFeed').innerHTML = '<div class="loading-state">Loading…</div>'; document.getElementById('eligibleFeed').innerHTML = '<div class="loading-state">Loading…</div>'; const shifts = await api(`/api/scheduling/shifts?weekStart=${isoDate(currentWeek)}`); const mine = shifts.filter(s => s.employeeId === session.user.id); document.getElementById('myScheduleFeed').innerHTML = mine.length ? mine.map(s => `<div class="my-shift"><strong>${s.date}</strong> · ${s.startTime}–${s.endTime} (${s.roleRequired.toUpperCase()})<br><button class="button danger" data-drop="${s.id}" ${s.status === 'Pending_Swap' ? 'disabled' : ''}>${s.status === 'Pending_Swap' ? 'Swap pending' : 'Offer shift'}</button></div>`).join('') : '<span class="empty-state">No shifts scheduled this week.</span>'; document.querySelectorAll('[data-drop]').forEach(button => button.addEventListener('click', async () => { try { const result = await api(`/api/scheduling/drop-shift?shiftId=${button.dataset.drop}`, {method:'POST'}); toast(result.matches.length ? `${result.matches.length} eligible teammate${result.matches.length === 1 ? '' : 's'} can now claim it.` : 'No eligible coworkers available for a swap right now.', result.matches.length ? 'success' : ''); await loadEmployeeSchedule(); } catch(error) { toast(error.message, 'error'); }})); const eligible = await api('/api/scheduling/eligible-shifts'); document.getElementById('eligibleFeed').innerHTML = eligible.length ? eligible.map(s => `<div class="feed-item"><strong>${s.date}</strong> · ${s.startTime}–${s.endTime}<br>${s.roleRequired.toUpperCase()} · you meet every scheduling rule<br><button class="button" data-claim="${s.swapRequestId}">Claim shift</button></div>`).join('') : '<span class="empty-state">No eligible shifts right now.</span>'; document.querySelectorAll('[data-claim]').forEach(button => button.addEventListener('click', async () => { try { await api(`/api/scheduling/swap-requests/${button.dataset.claim}/claim`, {method:'POST'}); toast('Claim sent to your manager for approval.', 'success'); await loadEmployeeSchedule(); } catch(error) { toast(error.message, 'error'); }})); }
 const isManager = session.user?.role === 'manager'; document.getElementById(isManager ? 'managerSchedule' : 'employeeSchedule').classList.remove('hidden');
 document.getElementById(isManager ? 'managerAnnouncements' : 'employeeAnnouncements').classList.remove('hidden');
 loadAnnouncements().catch(e => toast(e.message, 'error'));
+document.getElementById('ragAskForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('ragQuestion');
+  const question = input.value.trim();
+  if (!question) return;
+  const answerBox = document.getElementById('ragAnswer');
+  answerBox.innerHTML = '<div class="loading-state">Thinking…</div>';
+  await withBusy(e.target.querySelector('button[type="submit"]'), 'Asking…', async () => {
+    try {
+      const result = await api('/api/rag/query', {method:'POST', body:JSON.stringify({question})});
+      renderRagAnswer(result);
+    } catch (error) {
+      answerBox.innerHTML = '';
+      toast(error.message, 'error');
+    }
+  });
+});
 if (isManager) { document.getElementById('departmentsSettingsRow').classList.remove('hidden'); loadManagerSchedule().catch(e => toast(e.message, 'error')); loadTemplates().catch(e => toast(e.message, 'error'));
+  document.getElementById('ragManagerSection').classList.remove('hidden');
+  loadRagDocuments().catch(e => toast(e.message, 'error'));
+  document.getElementById('newRagDocument').addEventListener('click', () => { openRagDocumentModal(null).catch(error => toast(error.message, 'error')); });
+  document.getElementById('ragDocumentForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const editId = form.dataset.editId;
+    const title = document.getElementById('ragDocTitle').value;
+    const source = form.querySelector('input[name="ragSource"]:checked').value;
+    const body = new FormData();
+    body.append('title', title);
+    body.append('docType', document.getElementById('ragDocType').value);
+    if (source === 'file') {
+      const file = document.getElementById('ragDocFile').files[0];
+      if (file) body.append('file', file);
+      else if (!editId) { toast('Choose a file to upload.', 'error'); return; }
+    } else {
+      const text = document.getElementById('ragDocContentText').value.trim();
+      if (!text) { toast('Enter some text to save.', 'error'); return; }
+      const slug = (title.trim() || 'document').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'document';
+      body.append('file', new File([text], `${slug}.txt`, { type: 'text/plain' }));
+    }
+    await withBusy(form.querySelector('button[type="submit"]'), editId ? 'Saving…' : 'Adding…', async () => {
+      try {
+        if (editId) {
+          await api(`/api/rag/documents/${editId}`, {method:'PUT', body});
+        } else {
+          await api('/api/rag/documents', {method:'POST', body});
+        }
+        closeModal('ragDocumentModal');
+        toast(editId ? 'Document updated.' : 'Document added.', 'success');
+        await loadRagDocuments();
+      } catch (error) { toast(error.message, 'error'); }
+    });
+  });
   const savedDensity = localStorage.getItem('crewleeDensity') || 'cozy';
   document.getElementById('densitySelect').value = savedDensity;
   if (savedDensity !== 'cozy') document.getElementById('managerGrid').classList.add(`density-${savedDensity}`);
