@@ -1,4 +1,4 @@
-import { getSession, setSession } from './lib/session.js';
+import { getSession, setAccounts, setSession } from './lib/session.js';
 
 const form = document.getElementById('loginForm');
 const submitBtn = document.getElementById('submitBtn');
@@ -8,9 +8,33 @@ const passwordInput = document.getElementById('password');
 const confirmInput = document.getElementById('confirmPassword');
 const heading = document.getElementById('loginHeading');
 const subtext = document.getElementById('loginSubtext');
-const hint = document.getElementById('loginHint');
 const tabLogin = document.getElementById('tabLogin');
 const tabSignup = document.getElementById('tabSignup');
+const accountPicker = document.getElementById('accountPicker');
+const accountList = document.getElementById('accountList');
+
+// The same email+password matched more than one restaurant account (see auth.py's `accounts`
+// response) -- every entry is already a valid {token, user}, so picking one just finishes
+// login with that account instead of submitting anything else.
+function showAccountPicker(accounts) {
+  form.classList.add('hidden');
+  accountPicker.classList.remove('hidden');
+  accountList.innerHTML = '';
+  accounts.forEach((account) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'account-option';
+    button.innerHTML = `<span class="account-resto"></span><span class="account-role"></span>`;
+    button.querySelector('.account-resto').textContent = account.user.restaurantName || 'Restaurant';
+    button.querySelector('.account-role').textContent = account.user.role || '';
+    button.addEventListener('click', () => {
+      setAccounts(accounts);
+      setSession(account);
+      window.location.href = '/app';
+    });
+    accountList.appendChild(button);
+  });
+}
 
 if (getSession()) {
   window.location.href = '/app';
@@ -27,7 +51,13 @@ function setActiveTab(tab) {
   tabSignup.classList.toggle('active', tab === 'signup');
 }
 
+function hideAccountPicker() {
+  accountPicker.classList.add('hidden');
+  form.classList.remove('hidden');
+}
+
 function enterSignupMode() {
+  hideAccountPicker();
   mode = 'signup';
   setActiveTab('signup');
   emailInput.value = '';
@@ -41,12 +71,12 @@ function enterSignupMode() {
   heading.textContent = 'Sign up';
   subtext.textContent = "Enter the email your manager or admin used to invite you.";
   submitBtn.textContent = 'Continue';
-  hint.classList.add('hidden');
   errorDiv.classList.add('hidden');
   emailInput.focus();
 }
 
-function enterSetPasswordMode(email) {
+function enterSetPasswordMode(email, restaurantName) {
+  hideAccountPicker();
   mode = 'setPassword';
   setActiveTab('signup');
   emailInput.value = email;
@@ -58,14 +88,16 @@ function enterSetPasswordMode(email) {
   confirmInput.classList.remove('hidden');
   confirmInput.required = true;
   heading.textContent = 'Create your password';
-  subtext.textContent = `Finish setting up ${email}.`;
+  subtext.textContent = restaurantName
+    ? `Finish setting up ${email} at ${restaurantName}.`
+    : `Finish setting up ${email}.`;
   submitBtn.textContent = 'Create Password';
-  hint.classList.add('hidden');
   errorDiv.classList.add('hidden');
   passwordInput.focus();
 }
 
 function enterLoginMode() {
+  hideAccountPicker();
   mode = 'login';
   setActiveTab('login');
   emailInput.readOnly = false;
@@ -79,7 +111,6 @@ function enterLoginMode() {
   heading.textContent = 'Sign in';
   subtext.textContent = "Access your restaurant's workspace.";
   submitBtn.textContent = 'Sign In';
-  hint.classList.remove('hidden');
   errorDiv.classList.add('hidden');
 }
 
@@ -105,11 +136,17 @@ form.addEventListener('submit', async (e) => {
       const data = await res.json();
       if (!res.ok) {
         if (data.pending) {
-          enterSetPasswordMode(emailInput.value);
+          enterSetPasswordMode(emailInput.value, data.restaurantName);
           submitBtn.disabled = false;
           return;
         }
         throw new Error(data.detail || 'Invalid email or password');
+      }
+      if (data.accounts) {
+        showAccountPicker(data.accounts);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign In';
+        return;
       }
       setSession(data);
       window.location.href = '/app';
@@ -121,7 +158,7 @@ form.addEventListener('submit', async (e) => {
       if (!res.ok) throw new Error(data.detail || 'Something went wrong');
 
       if (data.status === 'pending') {
-        enterSetPasswordMode(email);
+        enterSetPasswordMode(email, data.restaurantName);
       } else if (data.status === 'active') {
         enterLoginMode();
         emailInput.value = email;
