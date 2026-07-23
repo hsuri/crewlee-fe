@@ -53,7 +53,12 @@ const settingsOverlay = document.getElementById('settingsOverlay');
 settingsBtn.addEventListener('click', async () => {
   settingsOverlay.classList.remove('hidden');
   settingsBtn.classList.add('active');
-  if (isManager) { if (!managerDepartments.length) await loadDepartments(); renderDepartmentsSettings(); }
+  if (isManager) {
+    if (!managerDepartments.length) await loadDepartments();
+    renderDepartmentsSettings();
+    if (!managerAllEmployees.length) await loadEmployees();
+    renderTeamSettings();
+  }
 });
 settingsOverlay.addEventListener('click', (e) => {
   if (e.target === settingsOverlay) {
@@ -72,7 +77,10 @@ const api = createApiClient(() => session.token);
 const mondayOf = (d) => { const copy = new Date(`${d}T12:00:00`); copy.setDate(copy.getDate() - ((copy.getDay() + 6) % 7)); return copy; };
 const isoDate = (d) => d.toISOString().slice(0, 10);
 let currentWeek = mondayOf(isoDate(new Date()));
-let managerEmployees = [], managerShifts = [], managerDepartments = [], managerTemplates = [];
+// managerEmployees stays "active roster only" everywhere it's already used (calendar grid,
+// shift-assignee dropdown, Employee Card modal); managerAllEmployees additionally carries
+// inactive employees, needed only by the Team settings roster so a manager can reactivate them.
+let managerEmployees = [], managerAllEmployees = [], managerShifts = [], managerDepartments = [], managerTemplates = [];
 let selectedShift = null, focusedCell = null, shiftClipboard = null;
 function selectShift(shift) {
   document.querySelectorAll('.shift.selected').forEach(el => el.classList.remove('selected'));
@@ -145,6 +153,10 @@ async function loadDepartments() {
   filter.innerHTML = '<option value="">All departments</option>' + managerDepartments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
   filter.value = managerDepartments.some(d => String(d.id) === previous) ? previous : '';
 }
+async function loadEmployees(departmentId) {
+  managerAllEmployees = await api(`/api/scheduling/employees${departmentId ? `?departmentId=${departmentId}` : ''}`);
+  managerEmployees = managerAllEmployees.filter(e => e.active);
+}
 async function loadTemplates() {
   managerTemplates = await api('/api/scheduling/templates');
   document.getElementById('templateSelect').innerHTML = '<option value="">Apply template…</option>' + managerTemplates.map(t => `<option value="${t.id}">${t.name} (${t.shiftCount})</option>`).join('');
@@ -164,6 +176,50 @@ function renderDepartmentsSettings() {
     try { await api(`/api/scheduling/departments/${departmentId}`, {method:'DELETE'}); await loadDepartments(); renderDepartmentsSettings(); toast('Department deleted.', 'success'); await loadManagerSchedule(); } catch (error) { toast(error.message, 'error'); }
   }));
 }
+function renderTeamSettings() {
+  document.getElementById('newEmpDepartment').innerHTML = '<option value="">No department</option>' + managerDepartments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  document.getElementById('teamList').innerHTML = managerAllEmployees.length
+    ? managerAllEmployees.map(e => `<div class="dept-row team-row${e.active ? '' : ' inactive'}"><span class="team-name">${e.name}</span><span class="role-badge">${e.role.toUpperCase()}</span><span class="team-dept">${e.departmentName || 'Unassigned'}</span><button type="button" class="button ${e.active ? 'danger' : 'secondary'}" data-toggle-employee="${e.id}">${e.active ? 'Deactivate' : 'Reactivate'}</button></div>`).join('')
+    : '<span class="empty-state">No team members yet.</span>';
+  document.querySelectorAll('[data-toggle-employee]').forEach(button => button.addEventListener('click', async () => {
+    const employeeId = Number(button.dataset.toggleEmployee);
+    const employee = managerAllEmployees.find(e => e.id === employeeId);
+    if (employee.active) {
+      const message = `Deactivate ${employee.name}? They will no longer be able to log in or be assigned new shifts. Past shifts and history stay intact, and you can reactivate them later.`;
+      if (!(await confirmDialog(message, { danger: true, confirmLabel: 'Deactivate' }))) return;
+    }
+    try {
+      await api(`/api/scheduling/employees/${employeeId}`, {method:'PATCH', body:JSON.stringify({
+        departmentId: employee.departmentId, maxHoursPerWeek: employee.maxHoursPerWeek, minHoursPerWeek: employee.minHoursPerWeek,
+        preferredHoursPerWeek: employee.preferredHoursPerWeek, schedulingConfidence: employee.schedulingConfidence,
+        schedulingNotes: employee.schedulingNotes, autoScheduleOptOut: employee.autoScheduleOptOut, active: !employee.active,
+      })});
+      const wasActive = employee.active;
+      await loadEmployees(); renderTeamSettings(); await loadManagerSchedule();
+      toast(`${employee.name} ${wasActive ? 'deactivated' : 'reactivated'}.`, 'success');
+    } catch (error) { toast(error.message, 'error'); }
+  }));
+}
+document.getElementById('addEmpBtn').addEventListener('click', async () => {
+  const nameInput = document.getElementById('newEmpName');
+  const emailInput = document.getElementById('newEmpEmail');
+  const name = nameInput.value.trim();
+  const email = emailInput.value.trim();
+  if (!name || !email) return;
+  try {
+    const departmentValue = document.getElementById('newEmpDepartment').value;
+    // No separate role picker -- a department already implies its role category (FOH/BOH);
+    // with no department selected there's nothing to derive from, so default to FOH.
+    const department = departmentValue ? managerDepartments.find(d => d.id === Number(departmentValue)) : null;
+    await api('/api/scheduling/employees', {method:'POST', body:JSON.stringify({
+      name, email, roleCategory: department ? department.roleCategory : 'foh',
+      departmentId: departmentValue ? Number(departmentValue) : null,
+    })});
+    nameInput.value = ''; emailInput.value = '';
+    await loadEmployees(); renderTeamSettings();
+    toast('Employee added. They can set a password at their first login.', 'success');
+  } catch (error) { toast(error.message, 'error'); }
+});
 const closeModal = id => document.getElementById(id).classList.add('hidden');
 document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => closeModal(button.dataset.close)));
 // Clicking the dimmed backdrop itself (not the modal card) closes it, same as #settingsOverlay
@@ -188,8 +244,8 @@ async function loadManagerSchedule() {
   if (!managerDepartments.length) await loadDepartments();
   const departmentId = document.getElementById('departmentFilter').value;
   const deptQuery = departmentId ? `&departmentId=${departmentId}` : '';
-  [managerEmployees, managerShifts] = await Promise.all([
-    api(`/api/scheduling/employees${departmentId ? `?departmentId=${departmentId}` : ''}`),
+  [, managerShifts] = await Promise.all([
+    loadEmployees(departmentId),
     api(`/api/scheduling/shifts?weekStart=${week}${deptQuery}`),
   ]);
   const draftCount = managerShifts.filter(s => s.isDraft).length;
@@ -472,7 +528,7 @@ document.getElementById('ragAskForm').addEventListener('submit', async (e) => {
     }
   });
 });
-if (isManager) { document.getElementById('departmentsSettingsRow').classList.remove('hidden'); loadManagerSchedule().catch(e => toast(e.message, 'error')); loadTemplates().catch(e => toast(e.message, 'error'));
+if (isManager) { document.getElementById('departmentsSettingsRow').classList.remove('hidden'); document.getElementById('teamSettingsRow').classList.remove('hidden'); loadManagerSchedule().catch(e => toast(e.message, 'error')); loadTemplates().catch(e => toast(e.message, 'error'));
   document.getElementById('ragManagerSection').classList.remove('hidden');
   loadRagDocuments().catch(e => toast(e.message, 'error'));
   document.getElementById('newRagDocument').addEventListener('click', () => { openRagDocumentModal(null).catch(error => toast(error.message, 'error')); });
@@ -524,7 +580,7 @@ if (isManager) { document.getElementById('departmentsSettingsRow').classList.rem
     const collapsed = scheduleLayout.classList.toggle('sidebar-collapsed');
     toggleSidebarBtn.textContent = collapsed ? 'Show panel' : 'Hide panel';
     localStorage.setItem('crewleeSidebarCollapsed', collapsed);
-  }); document.getElementById('newShift').onclick = async () => { try { if (!managerDepartments.length) await loadDepartments(); if (!managerEmployees.length) managerEmployees = await api('/api/scheduling/employees'); const deptSelect = document.getElementById('shiftDepartment'); deptSelect.innerHTML = managerDepartments.map(d => `<option value="${d.id}">${d.name}</option>`).join(''); const employeeSelect = document.getElementById('shiftEmployee'); employeeSelect.innerHTML = '<option value="">Open shift — assign later</option>' + managerEmployees.map(e => `<option value="${e.id}" data-department="${e.departmentId || ''}">${e.name} · ${e.role.toUpperCase()}</option>`).join(''); employeeSelect.onchange = () => { const selected = employeeSelect.options[employeeSelect.selectedIndex]; if (selected.dataset.department) deptSelect.value = selected.dataset.department; }; document.getElementById('shiftDate').value = isoDate(currentWeek); document.getElementById('shiftModal').classList.remove('hidden'); } catch(e) { toast(e.message, 'error'); }}; document.getElementById('shiftForm').onsubmit = async e => { e.preventDefault(); const employeeValue = document.getElementById('shiftEmployee').value; await withBusy(e.target.querySelector('button[type="submit"]'), 'Creating…', async () => { try { await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:Number(document.getElementById('shiftDepartment').value), employeeId:employeeValue ? Number(employeeValue) : null, date:document.getElementById('shiftDate').value, startTime:document.getElementById('shiftStart').value, endTime:document.getElementById('shiftEnd').value})}); closeModal('shiftModal'); toast('Shift created.', 'success'); await loadManagerSchedule(); } catch(error) { toast(error.message, 'error'); } });}; document.getElementById('autoBuild').addEventListener('click', async () => { try { const result = await api('/api/scheduling/auto-build', {method:'POST', body:JSON.stringify({weekStart:isoDate(currentWeek)})}); toast(`${result.assigned.length} shift(s) assigned${result.unfilledShiftIds.length ? ` · ${result.unfilledShiftIds.length} still open` : ''}.`, 'success'); await loadManagerSchedule(); } catch(e) { toast(e.message, 'error'); }}); document.getElementById('publishWeek').addEventListener('click', async () => { try { const departmentId = document.getElementById('departmentFilter').value; const result = await api('/api/scheduling/publish', {method:'POST', body:JSON.stringify({weekStart:isoDate(currentWeek), departmentId: departmentId ? Number(departmentId) : null})}); toast(`${result.publishedCount} shift(s) published.`, 'success'); await loadManagerSchedule(); } catch(e) { toast(e.message, 'error'); }}); document.getElementById('saveTemplate').addEventListener('click', async () => { const name = await promptDialog('Template name'); if (!name) return; try { await api('/api/scheduling/templates', {method:'POST', body:JSON.stringify({name, weekStart:isoDate(currentWeek)})}); toast('Template saved.', 'success'); await loadTemplates(); } catch(e) { toast(e.message, 'error'); }}); document.getElementById('templateSelect').addEventListener('change', async (e) => { const id = e.target.value; if (!id) return; try { const result = await api(`/api/scheduling/templates/${id}/apply?weekStart=${isoDate(currentWeek)}`, {method:'POST'}); toast(`${result.applied.length} shift(s) applied${result.skippedCount ? ` · ${result.skippedCount} skipped` : ''}.`, 'success'); await loadManagerSchedule(); } catch(err) { toast(err.message, 'error'); } finally { e.target.value = ''; }}); document.getElementById('previousWeek').onclick = () => { currentWeek.setDate(currentWeek.getDate() - 7); loadManagerSchedule().catch(e => toast(e.message, 'error')); }; document.getElementById('nextWeek').onclick = () => { currentWeek.setDate(currentWeek.getDate() + 7); loadManagerSchedule().catch(e => toast(e.message, 'error')); }; document.getElementById('departmentFilter').onchange = () => loadManagerSchedule().catch(e => toast(e.message, 'error')); document.getElementById('addDeptBtn').addEventListener('click', async () => { const nameInput = document.getElementById('newDeptName'); const name = nameInput.value.trim(); if (!name) return; try { await api('/api/scheduling/departments', {method:'POST', body:JSON.stringify({name, roleCategory:document.getElementById('newDeptCategory').value})}); nameInput.value = ''; await loadDepartments(); renderDepartmentsSettings(); toast('Department added.', 'success'); } catch(e) { toast(e.message, 'error'); }});
+  }); document.getElementById('newShift').onclick = async () => { try { if (!managerDepartments.length) await loadDepartments(); if (!managerAllEmployees.length) await loadEmployees(); const deptSelect = document.getElementById('shiftDepartment'); deptSelect.innerHTML = managerDepartments.map(d => `<option value="${d.id}">${d.name}</option>`).join(''); const employeeSelect = document.getElementById('shiftEmployee'); employeeSelect.innerHTML = '<option value="">Open shift — assign later</option>' + managerEmployees.map(e => `<option value="${e.id}" data-department="${e.departmentId || ''}">${e.name} · ${e.role.toUpperCase()}</option>`).join(''); employeeSelect.onchange = () => { const selected = employeeSelect.options[employeeSelect.selectedIndex]; if (selected.dataset.department) deptSelect.value = selected.dataset.department; }; document.getElementById('shiftDate').value = isoDate(currentWeek); document.getElementById('shiftModal').classList.remove('hidden'); } catch(e) { toast(e.message, 'error'); }}; document.getElementById('shiftForm').onsubmit = async e => { e.preventDefault(); const employeeValue = document.getElementById('shiftEmployee').value; await withBusy(e.target.querySelector('button[type="submit"]'), 'Creating…', async () => { try { await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:Number(document.getElementById('shiftDepartment').value), employeeId:employeeValue ? Number(employeeValue) : null, date:document.getElementById('shiftDate').value, startTime:document.getElementById('shiftStart').value, endTime:document.getElementById('shiftEnd').value})}); closeModal('shiftModal'); toast('Shift created.', 'success'); await loadManagerSchedule(); } catch(error) { toast(error.message, 'error'); } });}; document.getElementById('autoBuild').addEventListener('click', async () => { try { const result = await api('/api/scheduling/auto-build', {method:'POST', body:JSON.stringify({weekStart:isoDate(currentWeek)})}); toast(`${result.assigned.length} shift(s) assigned${result.unfilledShiftIds.length ? ` · ${result.unfilledShiftIds.length} still open` : ''}.`, 'success'); await loadManagerSchedule(); } catch(e) { toast(e.message, 'error'); }}); document.getElementById('publishWeek').addEventListener('click', async () => { try { const departmentId = document.getElementById('departmentFilter').value; const result = await api('/api/scheduling/publish', {method:'POST', body:JSON.stringify({weekStart:isoDate(currentWeek), departmentId: departmentId ? Number(departmentId) : null})}); toast(`${result.publishedCount} shift(s) published.`, 'success'); await loadManagerSchedule(); } catch(e) { toast(e.message, 'error'); }}); document.getElementById('saveTemplate').addEventListener('click', async () => { const name = await promptDialog('Template name'); if (!name) return; try { await api('/api/scheduling/templates', {method:'POST', body:JSON.stringify({name, weekStart:isoDate(currentWeek)})}); toast('Template saved.', 'success'); await loadTemplates(); } catch(e) { toast(e.message, 'error'); }}); document.getElementById('templateSelect').addEventListener('change', async (e) => { const id = e.target.value; if (!id) return; try { const result = await api(`/api/scheduling/templates/${id}/apply?weekStart=${isoDate(currentWeek)}`, {method:'POST'}); toast(`${result.applied.length} shift(s) applied${result.skippedCount ? ` · ${result.skippedCount} skipped` : ''}.`, 'success'); await loadManagerSchedule(); } catch(err) { toast(err.message, 'error'); } finally { e.target.value = ''; }}); document.getElementById('previousWeek').onclick = () => { currentWeek.setDate(currentWeek.getDate() - 7); loadManagerSchedule().catch(e => toast(e.message, 'error')); }; document.getElementById('nextWeek').onclick = () => { currentWeek.setDate(currentWeek.getDate() + 7); loadManagerSchedule().catch(e => toast(e.message, 'error')); }; document.getElementById('departmentFilter').onchange = () => loadManagerSchedule().catch(e => toast(e.message, 'error')); document.getElementById('addDeptBtn').addEventListener('click', async () => { const nameInput = document.getElementById('newDeptName'); const name = nameInput.value.trim(); if (!name) return; try { await api('/api/scheduling/departments', {method:'POST', body:JSON.stringify({name, roleCategory:document.getElementById('newDeptCategory').value})}); nameInput.value = ''; await loadDepartments(); renderDepartmentsSettings(); toast('Department added.', 'success'); } catch(e) { toast(e.message, 'error'); }});
   document.getElementById('dayPlanForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
