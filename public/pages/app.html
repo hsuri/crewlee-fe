@@ -21,6 +21,12 @@
           </svg>
           Crewlee
         </div>
+        <div class="nav-tabs">
+          <div class="tab active" data-panel="dashboard">Dashboard</div>
+          <div class="tab" data-panel="schedule">Schedule</div>
+          <div class="tab" data-panel="announcements">Announcements</div>
+          <div class="tab" data-panel="rag">Ask Crewlee</div>
+        </div>
         <div class="nav-right">
           <div class="user-chip">
             <span class="user-name" id="userName">—</span>
@@ -37,32 +43,130 @@
     </nav>
 
     <div class="container">
-      <div class="tabs">
-        <div class="tab active" data-panel="schedule">Schedule</div>
-        <div class="tab" data-panel="announcements">Announcements</div>
-        <div class="tab" data-panel="rag">Ask (RAG)</div>
-      </div>
 
-      <div class="panel" id="panel-rag">
-        <div class="schedule-toolbar"><h2>Ask Crewlee</h2></div>
-        <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted)">Ask about recipes, SOPs, training material, or licenses your manager has added — answers are grounded in your restaurant's own documents, with sources cited below.</p>
-        <form class="rag-ask-form" id="ragAskForm">
-          <input id="ragQuestion" type="text" placeholder="e.g. How long should I lather soap when washing hands?" required />
-          <button class="button" type="submit">Ask</button>
-        </form>
-        <div id="ragAnswer"></div>
+      <div class="panel active" id="panel-dashboard">
+        <div class="board-header">
+          <div class="board-heading">
+            <p class="eyebrow">Today</p>
+            <h1 id="dashGreeting">Good day</h1>
+            <p id="dashDateSub"></p>
+          </div>
+          <div class="weather-chip">☀️ <span class="temp">72°F</span> · Sunny</div>
+        </div>
 
-        <div id="ragManagerSection" class="hidden">
-          <div class="schedule-toolbar" style="margin-top:28px"><h2>Knowledge base</h2><button class="button" id="newRagDocument">+ Add document</button></div>
-          <div class="rag-doc-list" id="ragDocumentList"></div>
+        <div class="grid hidden" id="managerDashGrid">
+          <div class="card span2">
+            <div class="card-head"><h2>Today's roster</h2><a class="card-link" href="#" data-goto="schedule">Open schedule →</a></div>
+            <div id="dashRoster"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Needs attention</h2></div>
+            <div id="dashAttention"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Announcements</h2><a class="card-link" href="#" data-goto="announcements">View board →</a></div>
+            <div id="dashManagerAnnouncements"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Knowledge base</h2><a class="card-link" href="#" data-goto="rag">Ask Crewlee →</a></div>
+            <div class="kb-stat"><span class="n" id="dashDocCount">0</span><span class="lbl">documents on file</span></div>
+            <form class="kb-ask" id="dashAskForm">
+              <input id="dashAskInput" type="text" placeholder="Ask a quick question…" />
+              <button type="submit" aria-label="Ask"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+            </form>
+          </div>
+        </div>
+
+        <div class="grid hidden" id="employeeDashGrid">
+          <div class="card span2">
+            <div class="card-head"><h2>Your shift today</h2><a class="card-link" href="#" data-goto="schedule">Open schedule →</a></div>
+            <div id="dashMyShift"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Hours</h2></div>
+            <div class="hours-row">
+              <div class="hours-tile"><div class="n" id="dashHoursThisWeek">0</div><div class="lbl">This week</div></div>
+              <div class="hours-tile next"><div class="n" id="dashHoursNextWeek">—</div><div class="lbl">Next week</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Announcements</h2><a class="card-link" href="#" data-goto="announcements">View board →</a></div>
+            <div id="dashEmployeeAnnouncements"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Knowledge base</h2><a class="card-link" href="#" data-goto="rag">Ask Crewlee →</a></div>
+            <div class="kb-stat"><span class="n" id="dashDocCountEmployee">0</span><span class="lbl">documents you can ask about</span></div>
+            <form class="kb-ask" id="dashAskFormEmployee">
+              <input id="dashAskInputEmployee" type="text" placeholder="e.g. How do I make the sauce?" />
+              <button type="submit" aria-label="Ask"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+            </form>
+          </div>
         </div>
       </div>
 
-      <div class="panel active" id="panel-schedule">
+      <div class="panel" id="panel-rag">
+        <div class="board-header">
+          <div class="board-heading">
+            <p class="eyebrow">Knowledge base</p>
+            <p id="ragSub">Answers are grounded in your restaurant's own SOPs, recipes, and training docs — sources are always cited.</p>
+          </div>
+        </div>
+
+        <div class="chat-toolbar">
+          <button class="manage-btn" id="btnManageDocs" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            View knowledge base <span class="count" id="ragDocCount">0</span>
+          </button>
+        </div>
+
+        <div class="chat-shell">
+          <div class="chat-thread" id="chatThread"></div>
+          <form class="chat-input-bar" id="ragAskForm">
+            <input id="ragQuestion" type="text" placeholder="e.g. How long should I lather soap when washing hands?" autocomplete="off" required />
+            <button class="send-btn" type="submit" aria-label="Ask">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-schedule">
         <div id="managerSchedule" class="hidden">
-          <div class="schedule-toolbar"><h2>Weekly schedule</h2><div class="toolbar-group"><div class="toolbar-group"><select class="toolbar-select" id="departmentFilter"><option value="">All departments</option></select> <button class="button secondary" id="previousWeek" aria-label="Previous week">←</button> <button class="button secondary" id="nextWeek" aria-label="Next week">→</button> <select class="toolbar-select" id="densitySelect"><option value="cozy">Cozy</option><option value="compact">Compact</option><option value="spacious">Spacious</option></select> <button class="button secondary" id="toggleSidebar">Hide panel</button></div><div class="toolbar-divider"></div><div class="toolbar-group"><button class="button" id="newShift">+ Add shift</button> <select class="toolbar-select" id="templateSelect"><option value="">Apply template…</option></select> <button class="button secondary" id="saveTemplate">Save as template</button> <button class="button secondary" id="generateShifts">Generate Shifts</button> <button class="button" id="autoBuild">Smart Fill</button> <button class="button hidden" id="publishWeek">Publish week<span class="publish-badge hidden" id="publishBadge">0</span></button></div></div></div>
-          <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted)">Click a day to plan staffing requirements, or an employee's name to edit their Smart Fill profile. Click a shift to select it, then <strong>C</strong>/<strong>V</strong> to copy/paste onto a focused cell, <strong>Delete</strong> to remove it. Arrow keys move the focused cell. Hold <strong>Shift</strong> while dragging a shift to duplicate it.</p>
-          <div class="schedule-layout"><div class="calendar"><div class="calendar-grid" id="managerGrid"></div></div><aside class="queue"><h3>Open shifts</h3><div id="openShiftList"></div><h3 style="margin-top:22px">Approval queue</h3><div id="swapQueue"></div></aside></div>
+          <div class="board-header">
+            <div class="board-heading">
+              <p class="eyebrow">Staffing</p>
+              <p id="scheduleSub"></p>
+            </div>
+            <div class="header-controls">
+              <div class="view-switch" role="tablist" aria-label="Schedule view">
+                <button data-view="month" role="tab">Month</button>
+                <button data-view="week" role="tab" class="active">Week</button>
+                <button data-view="day" role="tab">Day</button>
+              </div>
+              <button class="publish-pill hidden" id="btnPublish" type="button">Publish week <span class="badge" id="publishCount">0</span></button>
+              <button class="manage-btn" id="btnBuildTools" type="button">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                Build tools <span class="count hidden" id="buildToolsBadge">0</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="nav-row">
+            <div class="nav-left">
+              <button class="icon-btn2" id="navPrev" aria-label="Previous">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <button class="icon-btn2" id="navNext" aria-label="Next">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+              <span class="nav-title" id="navTitle"></span>
+            </div>
+            <button class="today-btn" id="btnToday" type="button">Today</button>
+          </div>
+
+          <div id="monthView"></div>
+          <div id="weekView"></div>
+          <div id="dayView"></div>
         </div>
         <div id="employeeSchedule" class="employee-schedule hidden">
           <div class="schedule-toolbar"><h2>My schedule</h2><div><button class="button secondary" id="editAvailability">Availability</button> <button class="button secondary" id="refreshEmployee">Refresh</button></div></div>
@@ -72,18 +176,117 @@
       </div>
 
       <div class="panel" id="panel-announcements">
-        <div id="managerAnnouncements" class="hidden">
-          <div class="schedule-toolbar"><h2>Team announcements</h2><div><button class="button" id="newAnnouncement">+ New announcement</button></div></div>
-          <div class="announcement-list" id="managerAnnouncementList"></div>
+        <div class="board-header">
+          <div class="board-heading">
+            <p class="eyebrow">Team board</p>
+            <p id="announcementsSub"></p>
+          </div>
         </div>
+
+        <div class="ann-toolbar">
+          <div class="stat-strip" id="announcementStats"></div>
+          <button class="button hidden" id="newAnnouncement">+ New announcement</button>
+        </div>
+
+        <div id="managerAnnouncements" class="hidden">
+          <div class="card-list" id="managerAnnouncementList"></div>
+        </div>
+
         <div id="employeeAnnouncements" class="hidden">
-          <div class="schedule-toolbar"><h2>Team announcements</h2></div>
-          <div class="announcement-list" id="employeeAnnouncementList"></div>
+          <div class="zone">
+            <div class="zone-label attn" id="attnLabel"><span>Needs your attention</span><span class="count" id="attnCount">0</span></div>
+            <div class="card-list" id="attnList"></div>
+          </div>
+          <div class="zone">
+            <div class="zone-label"><span>Earlier</span><span class="count" id="earlierCount">0</span></div>
+            <div class="card-list" id="earlierList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-settings">
+        <div class="board-header">
+          <div class="board-heading">
+            <p class="eyebrow">Account</p>
+            <p>Your profile and restaurant configuration.</p>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card">
+            <div class="card-head"><h2>Profile</h2></div>
+            <div class="settings-row">
+              <div class="settings-label">Name</div>
+              <div class="settings-value" id="settingsName">—</div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">Email</div>
+              <div class="settings-value" id="settingsEmail">—</div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">Role</div>
+              <div class="settings-value" id="settingsRole">—</div>
+            </div>
+            <button class="logout-btn" id="logoutBtn">Log Out</button>
+          </div>
+
+          <div class="card span2 hidden" id="departmentsSettingsRow">
+            <div class="card-head"><h2>Departments</h2></div>
+            <div class="dept-list" id="departmentsList"></div>
+            <div class="dept-add-row">
+              <input id="newDeptName" type="text" placeholder="New department name" />
+              <select id="newDeptCategory"><option value="foh">FOH</option><option value="boh">BOH</option></select>
+              <button type="button" class="button secondary" id="addDeptBtn">Add</button>
+            </div>
+          </div>
+
+          <div class="card span2 hidden" id="teamSettingsRow">
+            <div class="card-head"><h2>Team</h2></div>
+            <div class="dept-list" id="teamList"></div>
+            <div class="team-add-row">
+              <input id="newEmpName" type="text" placeholder="Full name" />
+              <input id="newEmpEmail" type="email" placeholder="Email" />
+              <select id="newEmpDepartment"><option value="">No department</option></select>
+              <button type="button" class="button" id="addEmpBtn">Add employee</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="modal-backdrop hidden" id="shiftModal"><form class="modal" id="shiftForm"><h2>Add a shift</h2><p>Create an open shift for Auto-Build, or assign it to a teammate now.</p><div class="form-grid"><label class="field"><span>Department</span><select id="shiftDepartment"></select></label><label class="field"><span>Team member</span><select id="shiftEmployee"><option value="">Open shift — assign later</option></select></label><label class="field full"><span>Date</span><input id="shiftDate" type="date" required /></label><label class="field"><span>Start</span><input id="shiftStart" type="time" value="09:00" required /></label><label class="field"><span>End</span><input id="shiftEnd" type="time" value="17:00" required /></label></div><div class="modal-actions"><button type="button" class="button secondary" data-close="shiftModal">Cancel</button><button class="button" type="submit">Create shift</button></div></form></div>
+    <div class="drawer-veil" id="toolsVeil"></div>
+    <div class="drawer" id="toolsDrawer">
+      <div class="drawer-head">
+        <div><h2>Build tools</h2><p>Turn coverage needs into a finished, published week</p></div>
+        <button class="icon-btn" id="toolsClose" type="button" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <div class="tool-card">
+          <h3>Generate shifts</h3>
+          <p>Turn this week's staffing requirements into open shifts ready to assign.</p>
+          <select id="toolDepartment"><option value="">All departments</option></select>
+          <button class="button" style="width:100%" id="generateShifts" type="button">Generate from requirements</button>
+        </div>
+        <div class="tool-card">
+          <h3>Smart Fill</h3>
+          <p>Automatically assign eligible teammates to every open shift this week, respecting availability and hour limits.</p>
+          <button class="button" style="width:100%" id="autoBuild" type="button">Run Smart Fill</button>
+        </div>
+        <div class="tool-card">
+          <h3>Templates</h3>
+          <p>Apply a saved week as a starting point, or save this week's layout for reuse.</p>
+          <select id="templateSelect"><option value="">Choose a template…</option></select>
+          <div class="tool-row"><button class="button secondary" id="saveTemplate" type="button" style="width:100%">Save this week</button></div>
+        </div>
+        <div class="tool-card">
+          <h3>Approval queue</h3>
+          <p>Shift swap requests waiting on your decision.</p>
+          <div id="swapQueue"></div>
+        </div>
+      </div>
+    </div>
     <div class="modal-backdrop hidden" id="availabilityModal"><form class="modal" id="availabilityForm"><h2>Set weekly availability</h2><p>Only shifts fully inside these windows can be offered to you.</p><div class="availability-list" id="availabilityRows"></div><div class="modal-actions"><button type="button" class="button secondary" data-close="availabilityModal">Cancel</button><button class="button" type="submit">Save availability</button></div></form></div>
 
     <div class="modal-backdrop hidden" id="dayPlanModal">
@@ -145,6 +348,23 @@
       </form>
     </div>
 
+    <div class="drawer-veil" id="ragDrawerVeil"></div>
+    <div class="drawer" id="ragDrawer">
+      <div class="drawer-head">
+        <div>
+          <h2>Documents</h2>
+          <p>The source of truth employees can ask about</p>
+        </div>
+        <button class="icon-btn" id="ragDrawerClose" type="button" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="drawer-body" id="ragDocumentList"></div>
+      <div class="drawer-foot hidden" id="ragDrawerFoot">
+        <button class="button" id="newRagDocument" type="button" style="width:100%">+ Add document</button>
+      </div>
+    </div>
+
     <div class="modal-backdrop hidden" id="ragDocumentModal">
       <form class="modal" id="ragDocumentForm">
         <h2 id="ragDocumentModalTitle">Add document</h2>
@@ -173,52 +393,6 @@
       </form>
     </div>
 
-    <div class="modal-backdrop hidden" id="readReceiptsModal">
-      <div class="modal">
-        <h2>Read receipts</h2>
-        <p id="readReceiptsSubtitle"></p>
-        <div class="requirement-list" id="readReceiptsList"></div>
-        <div class="modal-actions"><button type="button" class="button secondary" data-close="readReceiptsModal">Close</button></div>
-      </div>
-    </div>
-
-    <div class="overlay hidden" id="settingsOverlay">
-      <div class="settings-panel">
-        <h2>Settings</h2>
-        <div class="settings-row">
-          <div class="settings-label">Name</div>
-          <div class="settings-value" id="settingsName">—</div>
-        </div>
-        <div class="settings-row">
-          <div class="settings-label">Email</div>
-          <div class="settings-value" id="settingsEmail">—</div>
-        </div>
-        <div class="settings-row">
-          <div class="settings-label">Role</div>
-          <div class="settings-value" id="settingsRole">—</div>
-        </div>
-        <div class="settings-row hidden" id="departmentsSettingsRow">
-          <div class="settings-label">Departments</div>
-          <div class="dept-list" id="departmentsList"></div>
-          <div class="dept-add-row">
-            <input id="newDeptName" type="text" placeholder="New department name" />
-            <select id="newDeptCategory"><option value="foh">FOH</option><option value="boh">BOH</option></select>
-            <button type="button" class="button secondary" id="addDeptBtn">Add</button>
-          </div>
-        </div>
-        <div class="settings-row hidden" id="teamSettingsRow">
-          <div class="settings-label">Team</div>
-          <div class="dept-list" id="teamList"></div>
-          <div class="team-add-row">
-            <input id="newEmpName" type="text" placeholder="Full name" />
-            <input id="newEmpEmail" type="email" placeholder="Email" />
-            <select id="newEmpDepartment"><option value="">No department</option></select>
-            <button type="button" class="button" id="addEmpBtn">Add employee</button>
-          </div>
-        </div>
-        <button class="logout-btn" id="logoutBtn">Log Out</button>
-      </div>
-    </div>
 
     <script type="module" src="/scripts/app.js"></script>
   </body>
