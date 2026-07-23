@@ -82,33 +82,48 @@ fetch('/api/me', { headers: { Authorization: `Bearer ${session.token}` } })
     window.location.href = '/login';
   });
 
-document.querySelectorAll('[data-panel]').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('[data-panel]').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById(`panel-${tab.dataset.panel}`).classList.add('active');
-  });
-});
+// Each panel is a real page (/app/<panel>) so a refresh lands back where the user was,
+// instead of always resetting to the dashboard. switchToPanel does the DOM work and the
+// URL bookkeeping; loadPanelData carries the per-panel side effects (currently only
+// Settings needs to lazy-load its data) so they run the same way whether the panel was
+// reached by clicking a tab, loading a direct URL, or hitting browser back/forward.
+const VALID_PANELS = ['dashboard', 'schedule', 'announcements', 'rag', 'settings'];
+function panelFromPath(pathname) {
+  const segment = pathname.replace(/^\/app\/?/, '');
+  return VALID_PANELS.includes(segment) ? segment : 'dashboard';
+}
 
-const settingsBtn = document.getElementById('settingsBtn');
-const settingsOverlay = document.getElementById('settingsOverlay');
-settingsBtn.addEventListener('click', async () => {
-  settingsOverlay.classList.remove('hidden');
-  settingsBtn.classList.add('active');
-  if (isManager) {
+async function loadPanelData(panelName) {
+  if (panelName === 'settings' && isManager) {
     if (!managerDepartments.length) await loadDepartments();
     renderDepartmentsSettings();
     if (!managerAllEmployees.length) await loadEmployees();
     renderTeamSettings();
   }
+}
+
+function switchToPanel(panelName, { pushHistory = true } = {}) {
+  document.querySelectorAll('[data-panel]').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  settingsBtn.classList.remove('active');
+  const tab = document.querySelector(`.tab[data-panel="${panelName}"]`);
+  if (tab) tab.classList.add('active');
+  if (panelName === 'settings') settingsBtn.classList.add('active');
+  document.getElementById(`panel-${panelName}`).classList.add('active');
+  if (pushHistory) history.pushState({ panel: panelName }, '', `/app/${panelName}`);
+  loadPanelData(panelName).catch(e => toast(e.message, 'error'));
+}
+document.querySelectorAll('[data-panel]').forEach(tab => {
+  tab.addEventListener('click', () => switchToPanel(tab.dataset.panel));
 });
-settingsOverlay.addEventListener('click', (e) => {
-  if (e.target === settingsOverlay) {
-    settingsOverlay.classList.add('hidden');
-    settingsBtn.classList.remove('active');
-  }
+
+window.addEventListener('popstate', (event) => {
+  const panelName = (event.state && event.state.panel) || panelFromPath(window.location.pathname);
+  switchToPanel(panelName, { pushHistory: false });
 });
+
+const settingsBtn = document.getElementById('settingsBtn');
+settingsBtn.addEventListener('click', () => switchToPanel('settings'));
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
   clearSession();
@@ -120,35 +135,43 @@ const api = createApiClient(() => session.token);
 const mondayOf = (d) => { const copy = new Date(`${d}T12:00:00`); copy.setDate(copy.getDate() - ((copy.getDay() + 6) % 7)); return copy; };
 const isoDate = (d) => d.toISOString().slice(0, 10);
 let currentWeek = mondayOf(isoDate(new Date()));
+let currentMonth = new Date(); currentMonth.setDate(1);
+let focusDay = isoDate(new Date());
+let viewMode = 'week'; // 'month' | 'week' | 'day'
 // managerEmployees stays "active roster only" everywhere it's already used (calendar grid,
 // shift-assignee dropdown, Employee Card modal); managerAllEmployees additionally carries
 // inactive employees, needed only by the Team settings roster so a manager can reactivate them.
 let managerEmployees = [], managerAllEmployees = [], managerShifts = [], managerDepartments = [], managerTemplates = [];
+let monthShifts = []; // flattened shifts across the visible 6-week month grid
+const collapsedGroups = new Set();
 let selectedShift = null, focusedCell = null, shiftClipboard = null;
 function selectShift(shift) {
-  document.querySelectorAll('.shift.selected').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll('.week-chip.selected, .shift-block.selected').forEach(el => el.classList.remove('selected'));
   selectedShift = shift || null;
-  if (selectedShift) { const el = document.querySelector(`.shift[data-shift-id="${selectedShift.id}"]`); if (el) el.classList.add('selected'); }
+  if (selectedShift) { const el = document.querySelector(`[data-shift-id="${selectedShift.id}"]`); if (el) el.classList.add('selected'); }
 }
-function focusCell(zone) {
-  document.querySelectorAll('.drop-zone.focused').forEach(el => el.classList.remove('focused'));
-  zone.classList.add('focused');
-  focusedCell = { element: zone, employeeId: zone.dataset.employeeId, date: zone.dataset.date };
+function focusCell(cell) {
+  document.querySelectorAll('.week-cell.focused').forEach(el => el.classList.remove('focused'));
+  cell.classList.add('focused');
+  focusedCell = { element: cell, employeeId: cell.dataset.empId, date: cell.dataset.date, isOpen: cell.dataset.open === '1' };
 }
 function moveFocus(key) {
-  const zones = Array.from(document.querySelectorAll('#managerGrid .drop-zone'));
-  if (!zones.length) return;
-  let idx = focusedCell ? zones.indexOf(focusedCell.element) : -1;
+  const cells = Array.from(document.querySelectorAll('#weekView .week-cell'));
+  if (!cells.length) return;
+  let idx = focusedCell ? cells.indexOf(focusedCell.element) : -1;
   if (idx === -1) idx = 0;
-  if (key === 'ArrowRight') idx = Math.min(idx + 1, zones.length - 1);
+  if (key === 'ArrowRight') idx = Math.min(idx + 1, cells.length - 1);
   else if (key === 'ArrowLeft') idx = Math.max(idx - 1, 0);
-  else if (key === 'ArrowDown') idx = Math.min(idx + 7, zones.length - 1);
+  else if (key === 'ArrowDown') idx = Math.min(idx + 7, cells.length - 1);
   else if (key === 'ArrowUp') idx = Math.max(idx - 7, 0);
-  focusCell(zones[idx]);
+  focusCell(cells[idx]);
 }
+// Keyboard shortcuts operate on the Week grid only -- Day view is a continuous hour timeline
+// (not a discrete cell grid), so click-to-quick-add/click-to-delete is its whole interaction
+// model rather than a select+arrow-keys one.
 document.addEventListener('keydown', async (e) => {
   const managerPanel = document.getElementById('managerSchedule');
-  if (!managerPanel || managerPanel.classList.contains('hidden')) return;
+  if (!managerPanel || managerPanel.classList.contains('hidden') || viewMode !== 'week') return;
   const tag = document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -158,15 +181,14 @@ document.addEventListener('keydown', async (e) => {
     toast('Shift copied.', '');
   } else if ((e.key === 'v' || e.key === 'V') && shiftClipboard && focusedCell) {
     e.preventDefault();
-    try { await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:shiftClipboard.departmentId, employeeId:Number(focusedCell.employeeId), date:focusedCell.date, startTime:shiftClipboard.startTime, endTime:shiftClipboard.endTime})}); toast('Shift pasted.', 'success'); await loadManagerSchedule(); } catch (error) { toast(error.message, 'error'); }
+    try { await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:shiftClipboard.departmentId, employeeId:focusedCell.employeeId ? Number(focusedCell.employeeId) : null, date:focusedCell.date, startTime:shiftClipboard.startTime, endTime:shiftClipboard.endTime})}); toast('Shift pasted.', 'success'); await loadWeek(); } catch (error) { toast(error.message, 'error'); }
   } else if ((e.key === 'Backspace' || e.key === 'Delete') && selectedShift) {
     e.preventDefault();
     const shiftId = selectedShift.id;
     if (selectedShift.employeeId && !(await confirmDialog(`Delete this assigned shift (${selectedShift.startTime}–${selectedShift.endTime})? This can't be undone.`, { danger: true, confirmLabel: 'Delete shift' }))) return;
-    try { await api(`/api/scheduling/shifts/${shiftId}`, {method:'DELETE'}); selectShift(null); toast('Shift deleted.', 'success'); await loadManagerSchedule(); } catch (error) { toast(error.message, 'error'); }
+    try { await api(`/api/scheduling/shifts/${shiftId}`, {method:'DELETE'}); selectShift(null); toast('Shift deleted.', 'success'); await loadWeek(); } catch (error) { toast(error.message, 'error'); }
   }
 });
-const dayLabel = (d) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' });
 const timeToMinutes = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const shiftHours = (shift) => { let start = timeToMinutes(shift.startTime), end = timeToMinutes(shift.endTime); if (end <= start) end += 24 * 60; return (end - start) / 60; };
 const dayNameOf = (dateStr) => new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
@@ -185,16 +207,11 @@ function shiftWarning(shift) {
   if (weeklyHours > 40 + 1e-9) return `Employee is over 40h this week (${weeklyHours.toFixed(1)}h)`;
   return null;
 }
-function shiftButton(shift, draggable = false) {
-  const warning = shiftWarning(shift);
-  return `<button class="shift ${shift.status === 'Pending_Swap' ? 'pending' : shift.employeeId ? '' : 'open'} ${shift.isDraft ? 'draft' : ''}" ${draggable ? `draggable="true" data-shift-id="${shift.id}"` : ''} ${warning ? `title="${warning}"` : ''}><strong>${shift.startTime}–${shift.endTime}</strong>${warning ? ' <span class="warn-icon">⚠️</span>' : ''}<br>${shift.departmentName || shift.roleRequired.toUpperCase()}${shift.status === 'Pending_Swap' ? ' · swap pending' : ''}</button>`;
-}
 async function loadDepartments() {
   managerDepartments = await api('/api/scheduling/departments');
-  const filter = document.getElementById('departmentFilter');
-  const previous = filter.value;
-  filter.innerHTML = '<option value="">All departments</option>' + managerDepartments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
-  filter.value = managerDepartments.some(d => String(d.id) === previous) ? previous : '';
+  const options = '<option value="">All departments</option>' + managerDepartments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  const toolSelect = document.getElementById('toolDepartment');
+  if (toolSelect) { const previous = toolSelect.value; toolSelect.innerHTML = options; toolSelect.value = managerDepartments.some(d => String(d.id) === previous) ? previous : ''; }
 }
 async function loadEmployees(departmentId) {
   managerAllEmployees = await api(`/api/scheduling/employees${departmentId ? `?departmentId=${departmentId}` : ''}`);
@@ -208,7 +225,7 @@ function renderDepartmentsSettings() {
   document.getElementById('departmentsList').innerHTML = managerDepartments.length ? managerDepartments.map(d => `<div class="dept-row"><input type="text" value="${d.name}" data-dept-id="${d.id}" /><span class="role-badge">${d.roleCategory.toUpperCase()}</span><button type="button" class="button secondary" data-save-dept="${d.id}">Save</button><button type="button" class="button danger" data-delete-dept="${d.id}">Delete</button></div>`).join('') : '<span class="empty-state">No departments yet.</span>';
   document.querySelectorAll('[data-save-dept]').forEach(button => button.addEventListener('click', async () => {
     const input = document.querySelector(`input[data-dept-id="${button.dataset.saveDept}"]`);
-    try { await api(`/api/scheduling/departments/${button.dataset.saveDept}`, {method:'PATCH', body:JSON.stringify({name:input.value})}); await loadDepartments(); renderDepartmentsSettings(); toast('Department renamed.', 'success'); await loadManagerSchedule(); } catch (error) { toast(error.message, 'error'); }
+    try { await api(`/api/scheduling/departments/${button.dataset.saveDept}`, {method:'PATCH', body:JSON.stringify({name:input.value})}); await loadDepartments(); renderDepartmentsSettings(); toast('Department renamed.', 'success'); await loadSchedule(); } catch (error) { toast(error.message, 'error'); }
   }));
   document.querySelectorAll('[data-delete-dept]').forEach(button => button.addEventListener('click', async () => {
     const departmentId = Number(button.dataset.deleteDept);
@@ -216,7 +233,7 @@ function renderDepartmentsSettings() {
     const employeeCount = managerEmployees.filter(e => e.departmentId === departmentId).length;
     const message = `Delete "${department.name}"? ${employeeCount ? `${employeeCount} employee${employeeCount === 1 ? '' : 's'} in it will become unassigned, and any` : 'Any'} staffing requirements for it will be deleted too. This can't be undone.`;
     if (!(await confirmDialog(message, { danger: true, confirmLabel: 'Delete department' }))) return;
-    try { await api(`/api/scheduling/departments/${departmentId}`, {method:'DELETE'}); await loadDepartments(); renderDepartmentsSettings(); toast('Department deleted.', 'success'); await loadManagerSchedule(); } catch (error) { toast(error.message, 'error'); }
+    try { await api(`/api/scheduling/departments/${departmentId}`, {method:'DELETE'}); await loadDepartments(); renderDepartmentsSettings(); toast('Department deleted.', 'success'); await loadSchedule(); } catch (error) { toast(error.message, 'error'); }
   }));
 }
 function renderTeamSettings() {
@@ -238,7 +255,7 @@ function renderTeamSettings() {
         schedulingNotes: employee.schedulingNotes, autoScheduleOptOut: employee.autoScheduleOptOut, active: !employee.active,
       })});
       const wasActive = employee.active;
-      await loadEmployees(); renderTeamSettings(); await loadManagerSchedule();
+      await loadEmployees(); renderTeamSettings(); await loadSchedule();
       toast(`${employee.name} ${wasActive ? 'deactivated' : 'reactivated'}.`, 'success');
     } catch (error) { toast(error.message, 'error'); }
   }));
@@ -265,81 +282,565 @@ document.getElementById('addEmpBtn').addEventListener('click', async () => {
 });
 const closeModal = id => document.getElementById(id).classList.add('hidden');
 document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => closeModal(button.dataset.close)));
-// Clicking the dimmed backdrop itself (not the modal card) closes it, same as #settingsOverlay
-// already does below — every static modal gets this for free rather than only some of them.
+// Clicking the dimmed backdrop itself (not the modal card) closes it -- every static modal
+// gets this for free rather than only some of them.
 document.querySelectorAll('.modal-backdrop[id]').forEach(backdrop => {
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.classList.add('hidden'); });
 });
 // Escape closes whatever's on top: a dynamic confirm/prompt dialog (dialog.js) first since those
-// float above everything else, then a static modal, then the settings overlay.
+// float above everything else, then a static modal.
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   const dynamicDialog = document.querySelector('.modal-backdrop:not([id])');
   if (dynamicDialog) { dynamicDialog.querySelector('[data-role="cancel"]')?.click(); return; }
   const openModal = document.querySelector('.modal-backdrop[id]:not(.hidden)');
   if (openModal) { closeModal(openModal.id); return; }
-  if (!settingsOverlay.classList.contains('hidden')) { settingsOverlay.classList.add('hidden'); settingsBtn.classList.remove('active'); }
 });
 
-async function loadManagerSchedule() {
-  document.getElementById('managerGrid').innerHTML = '<div class="loading-state">Loading schedule…</div>';
-  const week = isoDate(currentWeek);
-  if (!managerDepartments.length) await loadDepartments();
-  const departmentId = document.getElementById('departmentFilter').value;
-  const deptQuery = departmentId ? `&departmentId=${departmentId}` : '';
-  [, managerShifts] = await Promise.all([
-    loadEmployees(departmentId),
-    api(`/api/scheduling/shifts?weekStart=${week}${deptQuery}`),
-  ]);
-  const draftCount = managerShifts.filter(s => s.isDraft).length;
-  document.getElementById('publishWeek').classList.toggle('hidden', draftCount === 0);
-  document.getElementById('publishBadge').classList.toggle('hidden', draftCount === 0);
-  document.getElementById('publishBadge').textContent = draftCount;
-  const grid = document.getElementById('managerGrid'); grid.innerHTML = '<div class="head">Employee</div>';
-  const days = Array.from({length:7}, (_, index) => { const d = new Date(currentWeek); d.setDate(d.getDate() + index); return d; });
-  days.forEach(day => grid.insertAdjacentHTML('beforeend', `<div class="head day-head" data-date="${isoDate(day)}" title="Click to plan staffing for this day">${dayLabel(day)}</div>`));
-  const groups = managerDepartments
-    .filter(d => !departmentId || String(d.id) === departmentId)
-    .map(d => ({ department: d, employees: managerEmployees.filter(e => e.departmentId === d.id) }))
-    .filter(g => g.employees.length);
+const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+async function ensureDepartments() { if (!managerDepartments.length) await loadDepartments(); }
+function weekGroups() {
+  const groups = managerDepartments.map(d => ({ department: d, employees: managerEmployees.filter(e => e.departmentId === d.id) })).filter(g => g.employees.length);
   const unassigned = managerEmployees.filter(e => !e.departmentId);
-  if (unassigned.length) groups.push({ department: { name: 'No department' }, employees: unassigned });
-  groups.forEach(group => {
-    grid.insertAdjacentHTML('beforeend', `<div class="dept-header">${group.department.name}</div>`);
-    group.employees.forEach(employee => {
-      grid.insertAdjacentHTML('beforeend', `<div class="employee"><button type="button" class="employee-name" data-employee-card="${employee.id}" title="Edit Smart Fill profile"><span class="confidence-dot conf-${employee.schedulingConfidence}" title="Confidence ${employee.schedulingConfidence}/5"></span>${employee.name}${employee.autoScheduleOptOut ? ' <span class="opt-out-badge" title="Excluded from Smart Fill">off</span>' : ''}</button><br><span class="role-badge">${employee.role}</span></div>`);
-      days.forEach(day => { const dateStr = isoDate(day); const shifts = managerShifts.filter(s => s.employeeId === employee.id && s.date === dateStr); const unavailable = !dayHasAvailability(employee, dateStr); grid.insertAdjacentHTML('beforeend', `<div class="drop-zone ${unavailable ? 'unavailable' : ''}" data-employee-id="${employee.id}" data-date="${dateStr}">${shifts.map(s => shiftButton(s, true)).join('')}</div>`); });
-    });
+  if (unassigned.length) groups.push({ department: { id: 'none', name: 'No department' }, employees: unassigned });
+  return groups;
+}
+function closeAnyPopover() { document.querySelectorAll('.quick-pop').forEach(p => p.remove()); }
+// Quick-add/edit popovers append to <body> and position with `fixed` viewport coordinates
+// (not nested inside the scrollable week/day grid) so they're never clipped by the grid's
+// own scroll container -- previously a popover opened near the bottom of a long employee
+// list rendered below the visible area, forcing a scroll to reach it. `anchorRect` is
+// whatever the popover should appear right below (a track, a cell, a shift block); this
+// measures the popover's real size first, then flips it above the anchor if there isn't
+// room below, and clamps horizontally so it never runs off either edge of the viewport.
+function positionPopover(pop, anchorRect) {
+  document.body.appendChild(pop);
+  const margin = 8;
+  const popRect = pop.getBoundingClientRect();
+  let left = Math.max(margin, Math.min(anchorRect.left, window.innerWidth - popRect.width - margin));
+  let top = anchorRect.bottom + 6;
+  if (top + popRect.height > window.innerHeight - margin) top = anchorRect.top - popRect.height - 6;
+  top = Math.max(margin, top);
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
+}
+
+function renderScheduleView() {
+  document.getElementById('monthView').classList.toggle('hidden', viewMode !== 'month');
+  document.getElementById('weekView').classList.toggle('hidden', viewMode !== 'week');
+  document.getElementById('dayView').classList.toggle('hidden', viewMode !== 'day');
+}
+function renderPublishState() {
+  const show = viewMode !== 'month';
+  const draftCount = show ? managerShifts.filter(s => s.isDraft).length : 0;
+  document.getElementById('btnPublish').classList.toggle('hidden', !show || draftCount === 0);
+  document.getElementById('publishCount').textContent = draftCount;
+}
+async function loadSchedule() {
+  if (viewMode === 'month') await loadMonth();
+  else if (viewMode === 'week') await loadWeek();
+  else await loadDay();
+}
+function setViewMode(mode) {
+  viewMode = mode;
+  document.querySelectorAll('.view-switch button').forEach(b => b.classList.toggle('active', b.dataset.view === mode));
+  loadSchedule().catch(e => toast(e.message, 'error'));
+}
+function nav(dir) {
+  if (viewMode === 'month') { currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + dir, 1); }
+  else if (viewMode === 'week') { currentWeek.setDate(currentWeek.getDate() + dir * 7); }
+  else { const d = new Date(`${focusDay}T12:00:00`); d.setDate(d.getDate() + dir); focusDay = isoDate(d); }
+  loadSchedule().catch(e => toast(e.message, 'error'));
+}
+function goToday() {
+  const today = new Date();
+  currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  currentWeek = mondayOf(isoDate(today));
+  focusDay = isoDate(today);
+  loadSchedule().catch(e => toast(e.message, 'error'));
+}
+
+async function loadMonth() {
+  document.getElementById('monthView').innerHTML = '<div class="loading-state">Loading schedule…</div>';
+  renderScheduleView();
+  const first = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const gridStart = mondayOf(isoDate(first));
+  const mondays = new Set();
+  for (let i = 0; i < 42; i += 7) { const d = new Date(gridStart); d.setDate(d.getDate() + i); mondays.add(isoDate(d)); }
+  const weeks = await Promise.all(Array.from(mondays).map(m => api(`/api/scheduling/shifts?weekStart=${m}`)));
+  monthShifts = weeks.flat();
+  document.getElementById('scheduleSub').textContent = `A month-level snapshot — click any day to see who's on.`;
+  document.getElementById('navTitle').textContent = `${currentMonth.toLocaleDateString(undefined, { month: 'long' })} ${currentMonth.getFullYear()}`;
+  renderMonth(gridStart);
+  renderPublishState();
+}
+function renderMonth(gridStart) {
+  const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(gridStart); d.setDate(d.getDate() + i); return d; });
+  const todayIso = isoDate(new Date());
+  const el = document.getElementById('monthView');
+  el.innerHTML = `<div class="month-grid">${WEEKDAY_SHORT.map(w => `<div class="month-weekday">${w}</div>`).join('')}
+    ${cells.map(d => {
+      const iso = isoDate(d);
+      const inMonth = d.getMonth() === currentMonth.getMonth();
+      const shifts = monthShifts.filter(s => s.date === iso);
+      const openCount = shifts.filter(s => !s.employeeId).length;
+      const status = !shifts.length ? 'empty' : openCount ? 'partial' : 'full';
+      return `<div class="month-cell ${inMonth ? '' : 'other-month'} ${iso === todayIso ? 'today' : ''}" data-date="${iso}">
+          <div class="month-date">${d.getDate()}</div>
+          <div class="month-summary">${shifts.length ? `<span class="month-chip status-${status}"><span class="dot"></span>${shifts.length} shift${shifts.length === 1 ? '' : 's'}${openCount ? ` · ${openCount} open` : ''}</span>` : `<span class="month-chip status-empty"><span class="dot"></span>Not scheduled</span>`}</div>
+        </div>`;
+    }).join('')}
+  </div>`;
+  el.querySelectorAll('.month-cell').forEach(cell => cell.addEventListener('click', () => {
+    focusDay = cell.dataset.date;
+    setViewMode('day');
+  }));
+}
+
+async function loadWeek() {
+  document.getElementById('weekView').innerHTML = '<div class="loading-state">Loading schedule…</div>';
+  renderScheduleView();
+  await ensureDepartments();
+  const week = isoDate(currentWeek);
+  [, managerShifts] = await Promise.all([
+    loadEmployees(),
+    api(`/api/scheduling/shifts?weekStart=${week}`),
+  ]);
+  renderWeek();
+  renderPublishState();
+  await loadQueue();
+}
+function renderWeek() {
+  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(currentWeek); d.setDate(d.getDate() + i); return d; });
+  const todayIso = isoDate(new Date());
+  document.getElementById('navTitle').textContent = `Week of ${currentWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${days[6].getDate()}`;
+  const totalOpen = managerShifts.filter(s => !s.employeeId).length;
+  document.getElementById('scheduleSub').textContent = `${managerShifts.length} shift${managerShifts.length === 1 ? '' : 's'} this week${totalOpen ? ` · ${totalOpen} still open` : ' · fully assigned'}. Click a day header to zoom in, or an empty cell to add a shift.`;
+
+  function chipsForCell(shifts) {
+    return shifts.map(s => `<div class="week-chip ${!s.employeeId ? 'open-shift' : ''}" data-shift-id="${s.id}" draggable="true">${s.startTime}–${s.endTime}</div>`).join('');
+  }
+  function trackHTML(shiftsGetter, empId, isOpen) {
+    const employee = !isOpen && empId ? managerEmployees.find(e => e.id === empId) : null;
+    return `<div class="week-track">${days.map(d => {
+      const iso = isoDate(d);
+      const unavailable = employee && !dayHasAvailability(employee, iso);
+      return `<div class="week-cell ${iso === todayIso ? 'today-col' : ''} ${unavailable ? 'unavailable-day' : ''}" data-date="${iso}" data-emp-id="${empId ?? ''}" data-open="${isOpen ? '1' : '0'}">${chipsForCell(shiftsGetter(iso))}</div>`;
+    }).join('')}</div>`;
+  }
+
+  let groupsHtml = '';
+  weekGroups().forEach(group => {
+    const dept = group.department;
+    const key = `w${dept.id}`;
+    const collapsed = collapsedGroups.has(key);
+    const openShifts = managerShifts.filter(s => !s.employeeId && (dept.id === 'none' ? !s.departmentId : s.departmentId === dept.id));
+    groupsHtml += `<div class="dept-group-head ${collapsed ? 'collapsed' : ''}" data-group="${key}">
+        <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        ${escapeHtml(dept.name)} <span class="n">${group.employees.length} people${openShifts.length ? ` · ${openShifts.length} open` : ''}</span>
+      </div>
+      <div class="dept-group-body ${collapsed ? 'collapsed' : ''}" data-group-body="${key}" data-dept-id="${dept.id}">
+        ${dept.id !== 'none' ? `<div class="emp-row open-row">
+          <div class="emp-row-label"><span class="rl">Open shifts</span></div>
+          ${trackHTML(iso => openShifts.filter(s => s.date === iso), null, true)}
+        </div>` : ''}
+        ${group.employees.map(emp => `<div class="emp-row">
+            <div class="emp-row-label">
+              <button type="button" class="nm-btn" data-employee-card="${emp.id}"><span class="confidence-dot conf-${emp.schedulingConfidence}" title="Confidence ${emp.schedulingConfidence}/5"></span> ${escapeHtml(emp.name)}${emp.autoScheduleOptOut ? ' <span class="opt-out-badge" title="Excluded from Smart Fill">off</span>' : ''}</button>
+              <span class="rl">${emp.role}</span>
+            </div>
+            ${trackHTML(iso => managerShifts.filter(s => s.employeeId === emp.id && s.date === iso), emp.id, false)}
+          </div>`).join('')}
+      </div>`;
   });
-  document.getElementById('openShiftList').innerHTML = managerShifts.filter(s => !s.employeeId).length ? managerShifts.filter(s => !s.employeeId).map(s => `<div class="queue-item">${s.date}<br>${shiftButton(s, true)}</div>`).join('') : '<span class="empty-state">No open shifts.</span>';
-  document.querySelectorAll('[draggable]').forEach(el => el.addEventListener('dragstart', e => e.dataTransfer.setData('shiftId', el.dataset.shiftId)));
-  document.querySelectorAll('.shift[data-shift-id]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); selectShift(managerShifts.find(s => s.id === Number(el.dataset.shiftId))); }));
-  grid.querySelectorAll('.drop-zone').forEach(zone => {
-    zone.addEventListener('click', () => focusCell(zone));
-    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-    zone.addEventListener('drop', async e => {
-      e.preventDefault(); zone.classList.remove('drag-over');
+
+  const el = document.getElementById('weekView');
+  el.innerHTML = `<div class="day-shell">
+      <div class="week-header-row"><div class="ruler-label-col"></div>
+        ${days.map(d => `<div class="week-day-head ${isoDate(d) === todayIso ? 'today' : ''}" data-date="${isoDate(d)}"><span class="wd">${WEEKDAY_SHORT[(d.getDay() + 6) % 7]}</span><span class="dt">${d.getDate()}</span></div>`).join('')}
+      </div>
+      ${groupsHtml}
+    </div>`;
+
+  el.querySelectorAll('.week-day-head').forEach(head => head.addEventListener('click', () => { focusDay = head.dataset.date; setViewMode('day'); }));
+  el.querySelectorAll('.dept-group-head').forEach(head => head.addEventListener('click', () => {
+    const key = head.dataset.group;
+    if (collapsedGroups.has(key)) collapsedGroups.delete(key); else collapsedGroups.add(key);
+    renderWeek();
+  }));
+  el.querySelectorAll('[data-employee-card]').forEach(button => button.addEventListener('click', e => { e.stopPropagation(); try { openEmployeeCard(Number(button.dataset.employeeCard)); } catch (error) { toast(error.message, 'error'); } }));
+
+  el.querySelectorAll('.week-chip').forEach(chip => {
+    chip.addEventListener('click', e => { e.stopPropagation(); selectShift(managerShifts.find(s => s.id === Number(chip.dataset.shiftId))); openEditPopover(chip, Number(chip.dataset.shiftId)); });
+    chip.addEventListener('dragstart', e => e.dataTransfer.setData('shiftId', chip.dataset.shiftId));
+  });
+  el.querySelectorAll('.week-cell').forEach(cell => {
+    cell.addEventListener('click', e => { if (e.target.closest('.week-chip')) return; focusCell(cell); openQuickAddWeek(cell); });
+    cell.addEventListener('dragover', e => { e.preventDefault(); cell.classList.add('drag-over'); });
+    cell.addEventListener('dragleave', () => cell.classList.remove('drag-over'));
+    cell.addEventListener('drop', async e => {
+      e.preventDefault(); cell.classList.remove('drag-over');
       const shift = managerShifts.find(s => s.id === Number(e.dataTransfer.getData('shiftId')));
       if (!shift) return;
-      const sameCell = shift.employeeId === Number(zone.dataset.employeeId) && shift.date === zone.dataset.date;
+      const empId = cell.dataset.empId ? Number(cell.dataset.empId) : null;
+      const sameCell = shift.employeeId === empId && shift.date === cell.dataset.date;
       if (sameCell && !e.shiftKey) return;
       try {
         if (e.shiftKey) {
-          await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:shift.departmentId, employeeId:Number(zone.dataset.employeeId), date:zone.dataset.date, startTime:shift.startTime, endTime:shift.endTime})});
+          await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:shift.departmentId, employeeId:empId, date:cell.dataset.date, startTime:shift.startTime, endTime:shift.endTime})});
           toast('Shift duplicated.', 'success');
         } else {
-          await api(`/api/scheduling/shifts/${shift.id}`, {method:'PATCH', body:JSON.stringify({employeeId:Number(zone.dataset.employeeId), date:zone.dataset.date, startTime:shift.startTime, endTime:shift.endTime})});
+          await api(`/api/scheduling/shifts/${shift.id}`, {method:'PATCH', body:JSON.stringify({employeeId:empId, date:cell.dataset.date, startTime:shift.startTime, endTime:shift.endTime})});
         }
-        await loadManagerSchedule();
+        await loadWeek();
       } catch (error) { toast(error.message, 'error'); }
     });
   });
-  grid.querySelectorAll('.day-head').forEach(head => head.addEventListener('click', async () => { try { await openDayPlanModal(head.dataset.date); } catch (error) { toast(error.message, 'error'); } }));
-  grid.querySelectorAll('[data-employee-card]').forEach(button => button.addEventListener('click', e => { e.stopPropagation(); try { openEmployeeCard(Number(button.dataset.employeeCard)); } catch (error) { toast(error.message, 'error'); } }));
-  if (selectedShift) { const el = document.querySelector(`.shift[data-shift-id="${selectedShift.id}"]`); if (el) el.classList.add('selected'); else selectedShift = null; }
-  if (focusedCell) { const zone = document.querySelector(`.drop-zone[data-employee-id="${focusedCell.employeeId}"][data-date="${focusedCell.date}"]`); if (zone) { zone.classList.add('focused'); focusedCell.element = zone; } else focusedCell = null; }
+
+  if (selectedShift) { const chip = el.querySelector(`[data-shift-id="${selectedShift.id}"]`); if (chip) chip.classList.add('selected'); else selectedShift = null; }
+  if (focusedCell) { const cell = el.querySelector(`.week-cell[data-emp-id="${focusedCell.employeeId}"][data-date="${focusedCell.date}"]`); if (cell) { cell.classList.add('focused'); focusedCell.element = cell; } else focusedCell = null; }
+}
+function openQuickAddWeek(cell) {
+  closeAnyPopover();
+  const empId = cell.dataset.empId;
+  const isOpen = cell.dataset.open === '1';
+  const label = isOpen ? 'New open shift' : `New shift — ${managerEmployees.find(e => e.id === Number(empId))?.name || ''}`;
+  const pop = document.createElement('div');
+  pop.className = 'quick-pop';
+  pop.innerHTML = `<div class="qp-head">${escapeHtml(label)}<br><span style="font-weight:400;color:var(--text-muted)">${cell.dataset.date}</span></div>
+    <div class="qp-row">
+      <label>Start<input type="time" id="qpwStart" value="09:00"></label>
+      <label>End<input type="time" id="qpwEnd" value="17:00"></label>
+    </div>
+    <div class="qp-actions"><button type="button" class="button secondary" id="qpwCancel">Cancel</button><button class="button" type="button" id="qpwSave">Add shift</button></div>`;
+  positionPopover(pop, cell.getBoundingClientRect());
+  pop.querySelector('#qpwCancel').addEventListener('click', ev => { ev.stopPropagation(); closeAnyPopover(); });
+  pop.querySelector('#qpwSave').addEventListener('click', async ev => {
+    ev.stopPropagation();
+    const start = pop.querySelector('#qpwStart').value;
+    const end = pop.querySelector('#qpwEnd').value;
+    const deptId = isOpen ? Number(cell.closest('.dept-group-body').dataset.deptId) : managerEmployees.find(e => e.id === Number(empId))?.departmentId;
+    if (!deptId) { toast('This employee has no department set — assign one first.', 'error'); return; }
+    try {
+      await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId: deptId, employeeId: isOpen ? null : Number(empId), date: cell.dataset.date, startTime: start, endTime: end})});
+      closeAnyPopover();
+      toast('Shift created.', 'success');
+      await loadWeek();
+    } catch (error) { toast(error.message, 'error'); }
+  });
+  document.addEventListener('click', function outside(ev) { if (!pop.contains(ev.target) && ev.target !== cell) { closeAnyPopover(); document.removeEventListener('click', outside); } }, { capture: true });
+}
+function openEditPopover(el, shiftId) {
+  closeAnyPopover();
+  const shift = managerShifts.find(s => s.id === shiftId);
+  if (!shift) return;
+  const employee = shift.employeeId ? managerEmployees.find(e => e.id === shift.employeeId) : null;
+  const pop = document.createElement('div');
+  pop.className = 'quick-pop quick-pop-wide';
+  pop.innerHTML = `<div class="qp-head">${employee ? escapeHtml(employee.name) : 'Open shift'}${shift.isDraft ? ' · draft' : ''}${shift.status === 'Pending_Swap' ? ' · swap pending' : ''}</div>
+    <div class="qp-row">
+      <label>Start<input type="time" id="qpeStart" value="${shift.startTime}"></label>
+      <label>End<input type="time" id="qpeEnd" value="${shift.endTime}"></label>
+    </div>
+    <div class="qp-actions"><button type="button" class="qp-del" id="qpDelete">Delete shift</button><button class="button secondary" type="button" id="qpClose">Close</button><button class="button" type="button" id="qpSaveEdit">Save</button></div>`;
+  positionPopover(pop, el.getBoundingClientRect());
+  pop.querySelector('#qpClose').addEventListener('click', ev => { ev.stopPropagation(); closeAnyPopover(); });
+  pop.querySelector('#qpSaveEdit').addEventListener('click', async ev => {
+    ev.stopPropagation();
+    const startTime = pop.querySelector('#qpeStart').value;
+    const endTime = pop.querySelector('#qpeEnd').value;
+    try {
+      await api(`/api/scheduling/shifts/${shiftId}`, {method:'PATCH', body:JSON.stringify({employeeId: shift.employeeId, date: shift.date, startTime, endTime})});
+      selectShift(null);
+      closeAnyPopover();
+      toast('Shift updated.', 'success');
+      if (viewMode === 'day') await loadDay(); else await loadWeek();
+    } catch (error) { toast(error.message, 'error'); }
+  });
+  pop.querySelector('#qpDelete').addEventListener('click', async ev => {
+    ev.stopPropagation();
+    if (shift.employeeId && !(await confirmDialog(`Delete this assigned shift (${shift.startTime}–${shift.endTime})? This can't be undone.`, { danger: true, confirmLabel: 'Delete shift' }))) return;
+    try {
+      await api(`/api/scheduling/shifts/${shiftId}`, {method:'DELETE'});
+      selectShift(null);
+      closeAnyPopover();
+      toast('Shift deleted.', 'success');
+      if (viewMode === 'day') await loadDay(); else await loadWeek();
+    } catch (error) { toast(error.message, 'error'); }
+  });
+  document.addEventListener('click', function outside(ev) { if (!pop.contains(ev.target) && ev.target !== el) { closeAnyPopover(); document.removeEventListener('click', outside); } }, { capture: true });
+}
+
+const HOUR_START = 7, HOUR_END = 24, HOUR_W = 42;
+const fmtHourLabel = (h) => { const hh = h % 24; const ap = hh >= 12 ? 'pm' : 'am'; const h12 = hh % 12 === 0 ? 12 : hh % 12; return `${h12}${ap}`; };
+const parseHourDec = (t) => { const [h, m] = t.split(':').map(Number); return h + m / 60; };
+const endHourDec = (endTime) => (endTime === '24:00' || endTime === '00:00') ? 24 : parseHourDec(endTime);
+const toHHMM = (hourDec) => { const h = Math.floor(hourDec); const m = hourDec % 1 ? 30 : 0; return `${String(h % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`; };
+const snapHour = (x) => HOUR_START + Math.round((x / HOUR_W) * 2) / 2;
+
+async function loadDay() {
+  document.getElementById('dayView').innerHTML = '<div class="loading-state">Loading schedule…</div>';
+  renderScheduleView();
+  await ensureDepartments();
+  currentWeek = mondayOf(focusDay);
+  const week = isoDate(currentWeek);
+  [, managerShifts] = await Promise.all([
+    loadEmployees(),
+    api(`/api/scheduling/shifts?weekStart=${week}`),
+  ]);
+  renderDay();
+  renderPublishState();
   await loadQueue();
+}
+function renderDay() {
+  const iso = focusDay;
+  const d = new Date(`${iso}T12:00:00`);
+  document.getElementById('navTitle').textContent = `${WEEKDAY_SHORT[(d.getDay() + 6) % 7]}, ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  const dayShifts = managerShifts.filter(s => s.date === iso);
+  const open = dayShifts.filter(s => !s.employeeId).length;
+  document.getElementById('scheduleSub').textContent = `${dayShifts.length} shift${dayShifts.length === 1 ? '' : 's'} scheduled${open ? ` · ${open} still open` : ''}. Click any empty row to add one.`;
+
+  const hours = []; for (let h = HOUR_START; h <= HOUR_END; h++) hours.push(h);
+  const rulerHours = hours.map(h => `<div class="ruler-hour ${h % 2 === 0 ? 'label-hour' : ''}">${h % 2 === 0 ? fmtHourLabel(h) : ''}</div>`).join('');
+
+  function blockHTML(s) {
+    const left = (parseHourDec(s.startTime) - HOUR_START) * HOUR_W;
+    const width = Math.max((endHourDec(s.endTime) - parseHourDec(s.startTime)) * HOUR_W, 30);
+    const warning = shiftWarning(s);
+    return `<div class="shift-block ${!s.employeeId ? 'open-shift' : ''} ${s.status === 'Pending_Swap' ? 'pending-swap' : ''}" style="left:${left}px;width:${width}px" data-shift-id="${s.id}" draggable="true" ${warning ? `title="${escapeHtml(warning)}"` : ''}>
+      <span class="resize-handle resize-left" draggable="false" data-resize="start"></span>
+      <span class="block-label">${s.startTime}–${s.endTime}${warning ? ' ⚠️' : ''}</span>
+      <span class="resize-handle resize-right" draggable="false" data-resize="end"></span>
+    </div>`;
+  }
+  function trackHTML(shifts, empId, isOpen) {
+    let nowLine = '';
+    if (iso === isoDate(new Date())) {
+      const now = new Date(); const nowHour = now.getHours() + now.getMinutes() / 60;
+      if (nowHour >= HOUR_START && nowHour <= HOUR_END) nowLine = `<div class="now-line" style="left:${(nowHour - HOUR_START) * HOUR_W}px"></div>`;
+    }
+    const employee = !isOpen && empId ? managerEmployees.find(e => e.id === empId) : null;
+    const unavailable = employee && !dayHasAvailability(employee, iso);
+    return `<div class="emp-row-track ${unavailable ? 'unavailable-day' : ''}" data-emp-id="${empId ?? ''}" data-open="${isOpen ? '1' : '0'}" style="width:${(HOUR_END - HOUR_START) * HOUR_W}px">${shifts.map(blockHTML).join('')}${nowLine}</div>`;
+  }
+
+  let groupsHtml = '';
+  weekGroups().forEach(group => {
+    const dept = group.department;
+    const key = `d${dept.id}`;
+    const collapsed = collapsedGroups.has(key);
+    const openShifts = dayShifts.filter(s => !s.employeeId && (dept.id === 'none' ? !s.departmentId : s.departmentId === dept.id));
+    groupsHtml += `<div class="dept-group-head ${collapsed ? 'collapsed' : ''}" data-group="${key}">
+        <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        ${escapeHtml(dept.name)} <span class="n">${group.employees.length} people${openShifts.length ? ` · ${openShifts.length} open` : ''}</span>
+      </div>
+      <div class="dept-group-body ${collapsed ? 'collapsed' : ''}" data-group-body="${key}" data-dept-id="${dept.id}">
+        ${dept.id !== 'none' ? `<div class="emp-row open-row">
+          <div class="emp-row-label"><span class="rl">Open shifts</span></div>
+          ${trackHTML(openShifts, null, true)}
+        </div>` : ''}
+        ${group.employees.map(emp => `<div class="emp-row">
+            <div class="emp-row-label">
+              <button type="button" class="nm-btn" data-employee-card="${emp.id}"><span class="confidence-dot conf-${emp.schedulingConfidence}" title="Confidence ${emp.schedulingConfidence}/5"></span> ${escapeHtml(emp.name)}${emp.autoScheduleOptOut ? ' <span class="opt-out-badge" title="Excluded from Smart Fill">off</span>' : ''}</button>
+              <span class="rl">${emp.role}</span>
+            </div>
+            ${trackHTML(dayShifts.filter(s => s.employeeId === emp.id), emp.id, false)}
+          </div>`).join('')}
+      </div>`;
+  });
+
+  const el = document.getElementById('dayView');
+  el.innerHTML = `<div class="back-row">
+      <button class="back-link" id="backToWeek"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg> Back to week</button>
+      <button class="day-plan-btn" id="btnDayPlan" type="button">Plan staffing for this day</button>
+    </div>
+    <div class="day-shell">
+      <div class="timeline-scroll"><div class="timeline-inner">
+        <div class="ruler"><div class="ruler-label-col"></div><div class="ruler-hours" style="width:${(HOUR_END - HOUR_START) * HOUR_W}px">${rulerHours}</div></div>
+        ${groupsHtml}
+      </div></div>
+    </div>`;
+
+  document.getElementById('backToWeek').addEventListener('click', () => setViewMode('week'));
+  document.getElementById('btnDayPlan').addEventListener('click', () => { openDayPlanModal(iso).catch(error => toast(error.message, 'error')); });
+  el.querySelectorAll('.dept-group-head').forEach(head => head.addEventListener('click', () => {
+    const key = head.dataset.group;
+    if (collapsedGroups.has(key)) collapsedGroups.delete(key); else collapsedGroups.add(key);
+    renderDay();
+  }));
+  el.querySelectorAll('[data-employee-card]').forEach(button => button.addEventListener('click', e => { e.stopPropagation(); try { openEmployeeCard(Number(button.dataset.employeeCard)); } catch (error) { toast(error.message, 'error'); } }));
+  el.querySelectorAll('.shift-block').forEach(block => {
+    block.addEventListener('click', e => { e.stopPropagation(); selectShift(managerShifts.find(s => s.id === Number(block.dataset.shiftId))); openEditPopover(block, Number(block.dataset.shiftId)); });
+    block.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('shiftId', block.dataset.shiftId);
+      // Where within the block the user grabbed it, so dropping preserves that same grab
+      // point relative to the new time slot instead of snapping the block's left edge to
+      // the cursor.
+      e.dataTransfer.setData('offsetX', String(e.clientX - block.getBoundingClientRect().left));
+    });
+    // Dragging an edge resizes that boundary only (start or end); dragging the block body
+    // (native HTML5 dragstart/drop above and on the track below) moves the whole shift,
+    // keeping its duration. Plain mouse events here rather than HTML5 DnD, since a resize
+    // needs live pixel feedback within the same track, not a drop target.
+    block.querySelectorAll('[data-resize]').forEach(handle => {
+      handle.addEventListener('mousedown', e => {
+        e.preventDefault(); e.stopPropagation();
+        const shift = managerShifts.find(s => s.id === Number(block.dataset.shiftId));
+        if (!shift) return;
+        const track = block.parentElement;
+        const rect = track.getBoundingClientRect();
+        const side = handle.dataset.resize;
+        const startDec0 = parseHourDec(shift.startTime);
+        const endDec0 = endHourDec(shift.endTime);
+        let pendingHour = side === 'start' ? startDec0 : endDec0;
+        let moved = false;
+        const onMove = (ev) => {
+          moved = true;
+          const x = Math.max(0, Math.min(ev.clientX - rect.left, (HOUR_END - HOUR_START) * HOUR_W));
+          let hourDec = snapHour(x);
+          if (side === 'start') {
+            hourDec = Math.max(HOUR_START, Math.min(hourDec, endDec0 - 0.5));
+            block.style.left = `${(hourDec - HOUR_START) * HOUR_W}px`;
+            block.style.width = `${Math.max((endDec0 - hourDec) * HOUR_W, 30)}px`;
+          } else {
+            hourDec = Math.min(HOUR_END, Math.max(hourDec, startDec0 + 0.5));
+            block.style.width = `${Math.max((hourDec - startDec0) * HOUR_W, 30)}px`;
+          }
+          pendingHour = hourDec;
+        };
+        const onUp = async () => {
+          document.removeEventListener('mousemove', onMove);
+          // The mouseup that ends this resize still produces a native trailing `click` on
+          // the handle (mousedown/mouseup on the same element always does, even with
+          // plain mouse-event dragging in between) -- swallow it in the capture phase so
+          // it doesn't also bubble into the block's click handler and pop open the edit
+          // popover right on top of the shift the user just resized.
+          if (moved) document.addEventListener('click', ev => ev.stopPropagation(), { capture: true, once: true });
+          const startTime = side === 'start' ? toHHMM(pendingHour) : shift.startTime;
+          const endTime = side === 'end' ? toHHMM(pendingHour) : shift.endTime;
+          if (startTime === shift.startTime && endTime === shift.endTime) return;
+          try {
+            await api(`/api/scheduling/shifts/${shift.id}`, {method:'PATCH', body:JSON.stringify({employeeId:shift.employeeId, date:shift.date, startTime, endTime})});
+            toast('Shift updated.', 'success');
+            await loadDay();
+          } catch (error) { toast(error.message, 'error'); await loadDay(); }
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp, { once: true });
+      });
+    });
+  });
+  el.querySelectorAll('.emp-row-track').forEach(track => {
+    // Dragging across empty time draws out a shift's start/end directly (like a calendar
+    // app); a plain click (no meaningful movement) falls back to the old fixed-length
+    // quick-add. Plain `mousedown`/`mousemove` rather than HTML5 drag-and-drop, since this
+    // is drawing a new range on the track itself, not moving a draggable element — that's
+    // the separate dragstart/dragover/drop wiring below, for reassigning existing shifts.
+    track.addEventListener('mousedown', e => {
+      if (e.target.closest('.shift-block') || e.button !== 0) return;
+      e.preventDefault();
+      const rect = track.getBoundingClientRect();
+      const trackWidth = (HOUR_END - HOUR_START) * HOUR_W;
+      const startX = Math.max(0, Math.min(e.clientX - rect.left, trackWidth));
+      let currentX = startX;
+      let dragged = false;
+      const ghost = document.createElement('div');
+      ghost.className = 'drag-create-ghost';
+      track.appendChild(ghost);
+      const updateGhost = () => {
+        ghost.style.left = `${Math.min(startX, currentX)}px`;
+        ghost.style.width = `${Math.max(Math.abs(currentX - startX), 2)}px`;
+      };
+      updateGhost();
+      const onMove = (ev) => {
+        currentX = Math.max(0, Math.min(ev.clientX - rect.left, trackWidth));
+        if (Math.abs(currentX - startX) > 4) dragged = true;
+        updateGhost();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        ghost.remove();
+        if (dragged) {
+          openQuickAddDay(track, { clientX: rect.left + Math.min(startX, currentX) }, { endClientX: rect.left + Math.max(startX, currentX) });
+        } else {
+          openQuickAddDay(track, e);
+        }
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp, { once: true });
+    });
+    track.addEventListener('dragover', e => { e.preventDefault(); track.classList.add('drag-over'); });
+    track.addEventListener('dragleave', () => track.classList.remove('drag-over'));
+    track.addEventListener('drop', async e => {
+      e.preventDefault(); track.classList.remove('drag-over');
+      const shift = managerShifts.find(s => s.id === Number(e.dataTransfer.getData('shiftId')));
+      if (!shift) return;
+      const empId = track.dataset.empId ? Number(track.dataset.empId) : null;
+      // Dropping onto a track moves the whole shift to the time under the cursor (keeping
+      // its original duration), whether that's a new employee's row or the same one --
+      // dropping back on the same employee's row is exactly how you'd shift a shift's time
+      // without reassigning it, so that case can't be treated as a no-op.
+      const rect = track.getBoundingClientRect();
+      const offsetX = Number(e.dataTransfer.getData('offsetX')) || 0;
+      const duration = shiftHours(shift);
+      let newStartHour = snapHour(e.clientX - rect.left - offsetX);
+      newStartHour = Math.max(HOUR_START, Math.min(HOUR_END - duration, newStartHour));
+      const startTime = toHHMM(newStartHour);
+      const endTime = toHHMM(newStartHour + duration);
+      if (shift.employeeId === empId && startTime === shift.startTime && endTime === shift.endTime && !e.shiftKey) return;
+      try {
+        if (e.shiftKey) {
+          await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:shift.departmentId, employeeId:empId, date:shift.date, startTime, endTime})});
+          toast('Shift duplicated.', 'success');
+        } else {
+          await api(`/api/scheduling/shifts/${shift.id}`, {method:'PATCH', body:JSON.stringify({employeeId:empId, date:shift.date, startTime, endTime})});
+        }
+        await loadDay();
+      } catch (error) { toast(error.message, 'error'); }
+    });
+  });
+}
+function openQuickAddDay(track, e, opts = {}) {
+  closeAnyPopover();
+  const rect = track.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  let startHour = snapHour(x);
+  startHour = Math.max(HOUR_START, Math.min(HOUR_END - 1, startHour));
+  let endHour;
+  if (opts.endClientX != null) {
+    const endX = opts.endClientX - rect.left;
+    endHour = snapHour(endX);
+    endHour = Math.max(startHour + 0.5, Math.min(HOUR_END, endHour));
+  } else {
+    endHour = Math.min(HOUR_END, startHour + 4);
+  }
+  const empId = track.dataset.empId;
+  const isOpen = track.dataset.open === '1';
+  const label = isOpen ? 'New open shift' : `New shift — ${managerEmployees.find(e => e.id === Number(empId))?.name || ''}`;
+  const pop = document.createElement('div');
+  pop.className = 'quick-pop';
+  pop.innerHTML = `<div class="qp-head">${escapeHtml(label)}</div>
+    <div class="qp-row">
+      <label>Start<input type="time" id="qpStart" value="${toHHMM(startHour)}"></label>
+      <label>End<input type="time" id="qpEnd" value="${toHHMM(endHour)}"></label>
+    </div>
+    <div class="qp-actions"><button type="button" class="button secondary" id="qpCancel">Cancel</button><button class="button" type="button" id="qpSave">Add shift</button></div>`;
+  positionPopover(pop, { left: rect.left + x, top: rect.top, bottom: rect.bottom });
+  pop.querySelector('#qpCancel').addEventListener('click', ev => { ev.stopPropagation(); closeAnyPopover(); });
+  pop.querySelector('#qpSave').addEventListener('click', async ev => {
+    ev.stopPropagation();
+    const start = pop.querySelector('#qpStart').value;
+    const end = pop.querySelector('#qpEnd').value;
+    const deptId = isOpen ? Number(track.closest('.dept-group-body').dataset.deptId) : managerEmployees.find(e => e.id === Number(empId))?.departmentId;
+    if (!deptId) { toast('This employee has no department set — assign one first.', 'error'); return; }
+    try {
+      await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId: deptId, employeeId: isOpen ? null : Number(empId), date: focusDay, startTime: start, endTime: end})});
+      closeAnyPopover();
+      toast('Shift created.', 'success');
+      await loadDay();
+    } catch (error) { toast(error.message, 'error'); }
+  });
+  document.addEventListener('click', function outside(ev) { if (!pop.contains(ev.target) && ev.target !== track) { closeAnyPopover(); document.removeEventListener('click', outside); } }, { capture: true });
 }
 
 const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -427,69 +928,215 @@ function openEmployeeCard(employeeId) {
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const shortDate = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
+const initials = (name) => String(name).trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+const readReceiptsCache = new Map();
+function fetchReads(id) {
+  if (!readReceiptsCache.has(id)) {
+    readReceiptsCache.set(id, api(`/api/announcements/${id}/reads`).catch(error => { readReceiptsCache.delete(id); throw error; }));
+  }
+  return readReceiptsCache.get(id);
+}
+
+function statTile(n, label, cls) {
+  return `<div class="stat"><span class="n ${cls || ''}">${n}</span><span class="lbl">${label}</span></div>`;
+}
+function renderAnnouncementStats(announcements) {
+  const strip = document.getElementById('announcementStats');
+  const sub = document.getElementById('announcementsSub');
+  if (isManager) {
+    const withRecipients = announcements.filter(a => a.totalRecipients > 0);
+    const avg = withRecipients.length
+      ? Math.round(100 * withRecipients.reduce((sum, a) => sum + a.readCount / a.totalRecipients, 0) / withRecipients.length)
+      : 100;
+    const pinned = announcements.filter(a => a.pinned).length;
+    strip.innerHTML = statTile(announcements.length, 'Posted') + statTile(avg + '%', 'Avg. read rate', 'good') + statTile(pinned, 'Pinned');
+    sub.textContent = 'Posted by you and visible to the whole team.';
+  } else {
+    const needed = announcements.filter(a => !a.readByMe).length;
+    strip.innerHTML = statTile(announcements.length, 'Total posts') + statTile(needed, 'Awaiting you', needed ? 'accent' : 'good');
+    sub.textContent = needed
+      ? `${needed} post${needed === 1 ? '' : 's'} need${needed === 1 ? 's' : ''} your acknowledgment.`
+      : "You're all caught up.";
+  }
+}
+
+const PIN_ICON = '<span class="pin" title="Pinned to top"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 3l5 5-4 2-1 1v6l-2 2-2-4-5-1-1-2 5-5 1-4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg></span>';
+
+function announcementCardHTML(a, { compact = false, unread = false } = {}) {
+  let footRight;
+  if (isManager) {
+    const total = a.totalRecipients || 0;
+    const read = a.readCount || 0;
+    const pct = total ? Math.round(100 * read / total) : 100;
+    const full = total > 0 && read === total;
+    footRight = `<div class="manager-actions">
+        <button type="button" class="read-chip" data-reads="${a.id}">
+          <div class="read-track"><div class="read-fill ${full ? 'full' : ''}" style="width:${pct}%"></div></div>
+          <span class="read-text">${read}/${total}</span>
+          <div class="read-tooltip">
+            <div class="tt-head">Read by ${read} of ${total}</div>
+            <div class="tt-body" data-tt-body="${a.id}">Hover to see who's read this.</div>
+          </div>
+        </button>
+        <button type="button" class="del-btn" data-delete-announcement="${a.id}">Delete</button>
+      </div>`;
+  } else {
+    footRight = a.readByMe
+      ? `<span class="read-indicator">✓ Read ${shortDate(a.readAt)}</span>`
+      : `<button type="button" class="ack-btn" data-ack="${a.id}">Acknowledge</button>`;
+  }
+  return `<div class="card ${unread ? 'unread' : ''} ${compact ? 'compact' : ''}">
+      <div class="card-title-row">${a.pinned ? PIN_ICON : ''}${unread ? '<span class="pulse"></span>' : ''}<h3>${escapeHtml(a.title)}</h3></div>
+      <p class="announcement-body">${escapeHtml(a.body)}</p>
+      <div class="card-foot">
+        <div class="byline"><span class="avatar">${initials(a.authorName)}</span>${escapeHtml(a.authorName)} · ${shortDate(a.createdAt)}</div>
+        ${footRight}
+      </div>
+    </div>`;
+}
+
 async function loadAnnouncements() {
-  const listId = isManager ? 'managerAnnouncementList' : 'employeeAnnouncementList';
+  readReceiptsCache.clear();
+  const listId = isManager ? 'managerAnnouncementList' : 'attnList';
   document.getElementById(listId).innerHTML = '<div class="loading-state">Loading announcements…</div>';
   const announcements = await api('/api/announcements');
+  renderAnnouncementStats(announcements);
   if (isManager) renderManagerAnnouncements(announcements); else renderEmployeeAnnouncements(announcements);
 }
 function renderManagerAnnouncements(announcements) {
   const list = document.getElementById('managerAnnouncementList');
-  list.innerHTML = announcements.length ? announcements.map(a => {
-    const fillRatio = a.totalRecipients ? a.readCount / a.totalRecipients : 0;
-    const fillClass = !a.totalRecipients ? '' : fillRatio >= 1 ? 'full' : fillRatio > 0 ? 'partial' : 'empty';
-    return `<div class="announcement-card ${a.pinned ? 'pinned' : ''}">
-      <div class="announcement-card-head"><h3>${a.pinned ? '📌 ' : ''}${escapeHtml(a.title)}</h3><button type="button" class="icon-btn small" data-delete-announcement="${a.id}" title="Delete" aria-label="Delete">✕</button></div>
-      <p class="announcement-body">${escapeHtml(a.body)}</p>
-      <div class="announcement-meta"><span>${escapeHtml(a.authorName)} · ${shortDate(a.createdAt)}</span><button type="button" class="coverage-pill ${fillClass}" data-open-reads="${a.id}">${a.readCount}/${a.totalRecipients} read</button></div>
-    </div>`;
-  }).join('') : '<span class="empty-state">No announcements posted yet.</span>';
+  list.innerHTML = announcements.length
+    ? announcements.map(a => announcementCardHTML(a)).join('')
+    : '<span class="empty-state">No announcements posted yet.</span>';
   list.querySelectorAll('[data-delete-announcement]').forEach(button => button.addEventListener('click', async () => {
     if (!(await confirmDialog('Delete this announcement? This removes it for everyone.', { danger: true, confirmLabel: 'Delete' }))) return;
     try { await api(`/api/announcements/${button.dataset.deleteAnnouncement}`, {method:'DELETE'}); toast('Announcement deleted.', 'success'); await loadAnnouncements(); } catch (error) { toast(error.message, 'error'); }
   }));
-  list.querySelectorAll('[data-open-reads]').forEach(button => button.addEventListener('click', () => openReadReceipts(Number(button.dataset.openReads)).catch(error => toast(error.message, 'error'))));
+  list.querySelectorAll('[data-reads]').forEach(chip => {
+    const id = Number(chip.dataset.reads);
+    const body = chip.querySelector('[data-tt-body]');
+    let loaded = false;
+    const load = async () => {
+      if (loaded) return;
+      try {
+        const reads = await fetchReads(id);
+        loaded = true;
+        body.innerHTML = reads.length
+          ? `<ul>${reads.map(r => r.read
+              ? `<li class="read"><span class="mark">✓</span>${escapeHtml(r.name)}</li>`
+              : `<li class="pending"><span class="mark">·</span>${escapeHtml(r.name)}</li>`).join('')}</ul>`
+          : 'No other team members yet.';
+      } catch (error) {
+        body.textContent = "Couldn't load — try again.";
+      }
+    };
+    chip.addEventListener('mouseenter', load);
+    chip.addEventListener('focus', load);
+    chip.addEventListener('click', () => { chip.classList.toggle('open'); load(); });
+  });
 }
 function renderEmployeeAnnouncements(announcements) {
-  const list = document.getElementById('employeeAnnouncementList');
-  list.innerHTML = announcements.length ? announcements.map(a => `<div class="announcement-card ${a.pinned ? 'pinned' : ''} ${a.readByMe ? '' : 'unread'}">
-      <div class="announcement-card-head"><h3>${a.pinned ? '📌 ' : ''}${escapeHtml(a.title)}</h3>${a.readByMe ? '' : '<span class="unread-badge">New</span>'}</div>
-      <p class="announcement-body">${escapeHtml(a.body)}</p>
-      <div class="announcement-meta"><span>${escapeHtml(a.authorName)} · ${shortDate(a.createdAt)}</span>${a.readByMe ? `<span class="read-indicator">✓ Read ${shortDate(a.readAt)}</span>` : `<button type="button" class="button" data-ack="${a.id}">Acknowledge</button>`}</div>
-    </div>`).join('') : '<span class="empty-state">No announcements yet.</span>';
-  list.querySelectorAll('[data-ack]').forEach(button => button.addEventListener('click', async () => {
+  const needAck = announcements.filter(a => !a.readByMe);
+  const earlier = announcements.filter(a => a.readByMe);
+  document.getElementById('attnLabel').style.display = needAck.length ? 'flex' : 'none';
+  document.getElementById('attnCount').textContent = needAck.length;
+  document.getElementById('attnList').innerHTML = needAck.length
+    ? needAck.map(a => announcementCardHTML(a, { unread: true })).join('')
+    : '';
+  document.getElementById('earlierCount').textContent = earlier.length;
+  document.getElementById('earlierList').innerHTML = earlier.length
+    ? earlier.map(a => announcementCardHTML(a, { compact: true })).join('')
+    : '<span class="empty-state">No announcements yet.</span>';
+  document.querySelectorAll('[data-ack]').forEach(button => button.addEventListener('click', async () => {
     try { await api(`/api/announcements/${button.dataset.ack}/read`, {method:'POST'}); toast('Acknowledged.', 'success'); await loadAnnouncements(); } catch (error) { toast(error.message, 'error'); }
   }));
 }
-async function openReadReceipts(announcementId) {
-  const reads = await api(`/api/announcements/${announcementId}/reads`);
-  const readCount = reads.filter(r => r.read).length;
-  document.getElementById('readReceiptsSubtitle').textContent = `${readCount}/${reads.length} team member${reads.length === 1 ? '' : 's'} ha${reads.length === 1 ? 's' : 've'} acknowledged this.`;
-  document.getElementById('readReceiptsList').innerHTML = reads.length ? reads.map(r => `<div class="requirement-row"><div>${escapeHtml(r.name)}</div><span class="coverage-pill ${r.read ? 'full' : 'empty'}">${r.read ? `Read ${shortDate(r.readAt)}` : 'Not read'}</span></div>`).join('') : '<span class="empty-state">No other team members yet.</span>';
-  document.getElementById('readReceiptsModal').classList.remove('hidden');
+
+function ragSourceChipHTML(c) {
+  return `<span class="source-chip" tabindex="0">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+      ${escapeHtml(c.documentTitle)}
+      <div class="source-tooltip">
+        <div class="tt-head">Cited passage</div>
+        <div class="tt-quote">"${escapeHtml(c.citedText)}"</div>
+        <button type="button" class="tt-view-doc" data-view-doc-title="${escapeHtml(c.documentTitle)}">View document →</button>
+      </div>
+    </span>`;
+}
+const RAG_PROMPTS = [
+  "What's the opening and closing checklist?",
+  "How do I handle a cash drawer discrepancy?",
+  "Is there a recipe I can look up?",
+  "What should I know for my first shift?",
+];
+let ragThread = [];
+function renderRagThread() {
+  const el = document.getElementById('chatThread');
+  if (!ragThread.length) {
+    el.innerHTML = `<div class="chat-empty">
+        <div class="glyph"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h2>Ask about anything in your knowledge base</h2>
+        <p>Recipes, SOPs, training material, licenses — whatever your manager has added. Every answer cites exactly where it came from.</p>
+        <div class="prompt-chips">${RAG_PROMPTS.map(p => `<button type="button" class="prompt-chip" data-prompt="${escapeHtml(p)}">${escapeHtml(p)}</button>`).join('')}</div>
+      </div>`;
+    el.querySelectorAll('[data-prompt]').forEach(btn => btn.addEventListener('click', () => askRag(btn.dataset.prompt)));
+    return;
+  }
+  el.innerHTML = ragThread.map(m => {
+    const q = `<div class="msg-row q"><div class="msg q">${escapeHtml(m.question)}</div></div>`;
+    let a;
+    if (m.pending) {
+      a = `<div class="msg-row a"><div class="msg a"><div class="typing"><span></span><span></span><span></span></div></div></div>`;
+    } else if (m.error) {
+      a = `<div class="msg-row a"><div class="msg a error"><p>${escapeHtml(m.error)}</p></div></div>`;
+    } else {
+      const sources = m.citations && m.citations.length ? `<div class="sources-row">${m.citations.map(ragSourceChipHTML).join('')}</div>` : '';
+      a = `<div class="msg-row a"><div class="msg a"><p>${escapeHtml(m.answer)}</p>${sources}</div></div>`;
+    }
+    return q + a;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+async function askRag(question) {
+  question = (question || '').trim();
+  if (!question) return;
+  document.getElementById('ragQuestion').value = '';
+  ragThread.push({ question, pending: true });
+  renderRagThread();
+  const sendBtn = document.querySelector('#ragAskForm button[type="submit"]');
+  sendBtn.disabled = true;
+  const entry = ragThread[ragThread.length - 1];
+  try {
+    const result = await api('/api/rag/query', {method:'POST', body:JSON.stringify({question})});
+    entry.pending = false;
+    entry.answer = result.answer;
+    entry.citations = result.citations || [];
+  } catch (error) {
+    entry.pending = false;
+    entry.error = error.message;
+  }
+  sendBtn.disabled = false;
+  renderRagThread();
 }
 
-function renderRagAnswer(result) {
-  const answerBox = document.getElementById('ragAnswer');
-  const citationsHtml = result.citations && result.citations.length
-    ? `<div class="rag-citations"><strong>Sources:</strong><ul>${result.citations.map(c => `<li><strong>${escapeHtml(c.documentTitle)}</strong> — "${escapeHtml(c.citedText)}"</li>`).join('')}</ul></div>`
-    : '';
-  answerBox.innerHTML = `<div class="rag-answer-card"><p>${escapeHtml(result.answer)}</p>${citationsHtml}</div>`;
-}
 let ragDocuments = [];
 async function loadRagDocuments() {
   document.getElementById('ragDocumentList').innerHTML = '<div class="loading-state">Loading documents…</div>';
   ragDocuments = await api('/api/rag/documents');
+  document.getElementById('ragDocCount').textContent = ragDocuments.length;
+  document.getElementById('ragDrawerFoot').classList.toggle('hidden', !isManager);
   renderRagDocuments();
 }
 function renderRagDocuments() {
   const list = document.getElementById('ragDocumentList');
-  list.innerHTML = ragDocuments.length ? ragDocuments.map(d => `<div class="rag-doc-card">
-      <div class="rag-doc-head"><h3>${escapeHtml(d.title)}</h3><span class="role-badge">${d.docType}</span></div>
-      <div class="announcement-meta"><span>${escapeHtml(d.uploadedByName)} · updated ${shortDate(d.updatedAt)}</span>
-        <span><a href="/api/rag/documents/${d.id}/file" class="button secondary" data-download-doc="${d.id}" title="Download ${escapeHtml(d.originalFilename)}">Download</a> <button type="button" class="button secondary" data-edit-doc="${d.id}">Edit</button> <button type="button" class="button danger" data-delete-doc="${d.id}">Delete</button></span>
+  list.innerHTML = ragDocuments.length ? ragDocuments.map(d => `<div class="rag-doc-card" data-doc-id="${d.id}">
+      <div class="rag-doc-top"><h3>${escapeHtml(d.title)}</h3><span class="rag-doc-type">${d.docType}</span></div>
+      <div class="rag-doc-meta">${escapeHtml(d.uploadedByName)} · updated ${shortDate(d.updatedAt)}</div>
+      <div class="rag-doc-actions">
+        <a href="/api/rag/documents/${d.id}/file" class="button secondary" data-download-doc="${d.id}" title="Download ${escapeHtml(d.originalFilename)}">Download</a>
+        ${isManager ? `<button type="button" class="button secondary" data-edit-doc="${d.id}">Edit</button><button type="button" class="button danger" data-delete-doc="${d.id}">Delete</button>` : ''}
       </div>
-    </div>`).join('') : '<span class="empty-state">No documents yet — add a recipe, SOP, training doc, or license to get started.</span>';
+    </div>`).join('') : '<div class="empty-state">No documents yet — add a recipe, SOP, training doc, or license to get started.</div>';
   // A plain <a href> can't carry the Authorization bearer header, so intercept the click and
   // fetch through the authenticated api client instead, then hand the browser a blob URL.
   list.querySelectorAll('[data-download-doc]').forEach(link => link.addEventListener('click', async (e) => {
@@ -515,6 +1162,27 @@ function renderRagDocuments() {
     try { await api(`/api/rag/documents/${button.dataset.deleteDoc}`, {method:'DELETE'}); toast('Document deleted.', 'success'); await loadRagDocuments(); } catch (error) { toast(error.message, 'error'); }
   }));
 }
+function openRagDrawer() { document.getElementById('ragDrawer').classList.add('open'); document.getElementById('ragDrawerVeil').classList.add('open'); }
+function closeRagDrawer() { document.getElementById('ragDrawer').classList.remove('open'); document.getElementById('ragDrawerVeil').classList.remove('open'); }
+function viewRagDoc(title) {
+  const doc = ragDocuments.find(d => d.title === title);
+  openRagDrawer();
+  if (!doc) return;
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`.rag-doc-card[data-doc-id="${doc.id}"]`);
+    if (!card) return;
+    card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    card.classList.add('flash');
+    setTimeout(() => card.classList.remove('flash'), 1400);
+  });
+}
+document.getElementById('btnManageDocs').addEventListener('click', openRagDrawer);
+document.getElementById('ragDrawerClose').addEventListener('click', closeRagDrawer);
+document.getElementById('ragDrawerVeil').addEventListener('click', closeRagDrawer);
+document.getElementById('chatThread').addEventListener('click', (e) => {
+  const viewBtn = e.target.closest('[data-view-doc-title]');
+  if (viewBtn) viewRagDoc(viewBtn.dataset.viewDocTitle);
+});
 function setRagSourceMode(mode) {
   document.getElementById('ragDocFileField').classList.toggle('hidden', mode !== 'file');
   document.getElementById('ragDocTextField').classList.toggle('hidden', mode !== 'text');
@@ -549,31 +1217,136 @@ async function openRagDocumentModal(documentId) {
   document.getElementById('ragDocumentModal').classList.remove('hidden');
 }
 
-async function loadQueue() { const requests = await api('/api/scheduling/swap-requests'); const queue = document.getElementById('swapQueue'); queue.innerHTML = requests.length ? requests.map(r => `<div class="queue-item"><strong>${r.requestingEmployeeName}</strong> → <strong>${r.targetEmployeeName}</strong><br>${r.date} · ${r.startTime}–${r.endTime}<div class="queue-actions"><button class="button" data-decision="true" data-id="${r.id}" data-approve="true">Approve</button><button class="button danger" data-decision="true" data-id="${r.id}" data-approve="false">Deny</button></div></div>`).join('') : '<span class="empty-state">No active approvals.</span>'; queue.querySelectorAll('[data-decision]').forEach(button => button.addEventListener('click', async () => { try { await api(`/api/scheduling/swap-requests/${button.dataset.id}/decision`, {method:'POST', body:JSON.stringify({approve:button.dataset.approve === 'true'})}); await loadManagerSchedule(); } catch(error) { toast(error.message, 'error'); }})); }
+async function loadQueue() {
+  const requests = await api('/api/scheduling/swap-requests');
+  const queue = document.getElementById('swapQueue');
+  queue.innerHTML = requests.length ? requests.map(r => `<div class="queue-item"><strong>${escapeHtml(r.requestingEmployeeName)}</strong> → <strong>${escapeHtml(r.targetEmployeeName)}</strong><br>${r.date} · ${r.startTime}–${r.endTime}<div class="queue-actions"><button class="button" data-decision="true" data-id="${r.id}" data-approve="true">Approve</button><button class="button danger" data-decision="true" data-id="${r.id}" data-approve="false">Deny</button></div></div>`).join('') : '<span class="empty-state">No active approvals.</span>';
+  queue.querySelectorAll('[data-decision]').forEach(button => button.addEventListener('click', async () => { try { await api(`/api/scheduling/swap-requests/${button.dataset.id}/decision`, {method:'POST', body:JSON.stringify({approve:button.dataset.approve === 'true'})}); await loadSchedule(); } catch(error) { toast(error.message, 'error'); }}));
+  const badge = document.getElementById('buildToolsBadge');
+  badge.textContent = requests.length;
+  badge.classList.toggle('hidden', requests.length === 0);
+}
+function timeGreeting() { const h = new Date().getHours(); return h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'; }
+function fmtClock(t) { const [h, m] = t.split(':').map(Number); const ap = h >= 12 ? 'pm' : 'am'; const h12 = h % 12 === 0 ? 12 : h % 12; return `${h12}:${String(m).padStart(2, '0')}${ap}`; }
+
+async function loadDashboard() {
+  document.getElementById('dashGreeting').textContent = `Good ${timeGreeting()}, ${(session.user?.name || 'there').split(' ')[0]}`;
+  document.getElementById('dashDateSub').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  document.getElementById(isManager ? 'managerDashGrid' : 'employeeDashGrid').classList.remove('hidden');
+  if (isManager) await renderManagerDashboard(); else await renderEmployeeDashboard();
+}
+async function renderManagerDashboard() {
+  const today = isoDate(new Date());
+  const weekStart = isoDate(mondayOf(today));
+  const [shifts, announcements, docs, swaps] = await Promise.all([
+    api(`/api/scheduling/shifts?weekStart=${weekStart}`),
+    api('/api/announcements'),
+    api('/api/rag/documents'),
+    api('/api/scheduling/swap-requests'),
+  ]);
+  const todayShifts = shifts.filter(s => s.date === today).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  document.getElementById('dashRoster').innerHTML = todayShifts.length
+    ? todayShifts.map(s => `<div class="roster-row ${s.employeeId ? '' : 'open'}">
+        <span class="roster-avatar">${s.employeeId ? initials(s.employeeName) : '?'}</span>
+        <span class="roster-name">${s.employeeId ? escapeHtml(s.employeeName.split(' ')[0]) : 'Open shift'}</span>
+        <span class="roster-dept">${s.roleRequired.toUpperCase()}</span>
+        <span class="roster-time">${fmtClock(s.startTime)} – ${fmtClock(s.endTime)}</span>
+      </div>`).join('')
+    : '<div class="empty-state">Nothing scheduled today yet.</div>';
+
+  const openToday = todayShifts.filter(s => !s.employeeId).length;
+  const openWeek = shifts.filter(s => !s.employeeId).length;
+  const draftWeek = shifts.filter(s => s.isDraft).length;
+  const attnItems = [];
+  if (openToday) attnItems.push({ title: `${openToday} open shift${openToday === 1 ? '' : 's'} today`, sub: 'Still unassigned' });
+  if (openWeek > openToday) attnItems.push({ title: `${openWeek} open shift${openWeek === 1 ? '' : 's'} this week`, sub: 'Across the whole week' });
+  if (draftWeek) attnItems.push({ title: `${draftWeek} shift${draftWeek === 1 ? '' : 's'} not yet published`, sub: "Employees can't see these yet" });
+  if (swaps.length) attnItems.push({ title: `${swaps.length} swap request${swaps.length === 1 ? '' : 's'} awaiting approval`, sub: 'In Schedule → Build tools' });
+  document.getElementById('dashAttention').innerHTML = attnItems.length
+    ? attnItems.map(i => `<div class="attn-item"><span class="attn-dot"></span><div class="attn-text"><strong>${escapeHtml(i.title)}</strong><span>${escapeHtml(i.sub)}</span></div></div>`).join('')
+    : '<div class="all-clear">✓ Nothing needs your attention right now</div>';
+
+  document.getElementById('dashManagerAnnouncements').innerHTML = announcements.length
+    ? announcements.slice(0, 3).map(a => `<div class="ann-item">${a.pinned ? '<span class="pin">Pinned</span>' : ''}<h3>${escapeHtml(a.title)}</h3><div class="meta">${a.readCount}/${a.totalRecipients} read</div></div>`).join('')
+    : '<div class="empty-state">No announcements yet.</div>';
+
+  document.getElementById('dashDocCount').textContent = docs.length;
+}
+async function renderEmployeeDashboard() {
+  const today = isoDate(new Date());
+  const thisMonday = mondayOf(today);
+  const nextMonday = new Date(thisMonday); nextMonday.setDate(nextMonday.getDate() + 7);
+  const [shifts, nextShifts, announcements, docs] = await Promise.all([
+    api(`/api/scheduling/shifts?weekStart=${isoDate(thisMonday)}`),
+    api(`/api/scheduling/shifts?weekStart=${isoDate(nextMonday)}`),
+    api('/api/announcements'),
+    api('/api/rag/documents'),
+  ]);
+  const mine = shifts.filter(s => s.employeeId === session.user.id).sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+  const todayShift = mine.find(s => s.date === today);
+  const nextShift = mine.find(s => s.date > today);
+  const el = document.getElementById('dashMyShift');
+  if (todayShift) {
+    el.innerHTML = `<div class="myshift-card">
+        <div class="myshift-time"><div class="t">${fmtClock(todayShift.startTime)}</div><div class="d">start</div></div>
+        <div class="myshift-divider"></div>
+        <div class="myshift-detail"><div class="dept">${todayShift.roleRequired.toUpperCase()} · until ${fmtClock(todayShift.endTime)}</div><div class="note">You're on today</div></div>
+      </div>`;
+  } else {
+    const nextLabel = nextShift
+      ? `Your next shift is <strong>${new Date(`${nextShift.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' })}, ${fmtClock(nextShift.startTime)}–${fmtClock(nextShift.endTime)}</strong>`
+      : 'No upcoming shifts scheduled yet this week.';
+    el.innerHTML = `<div class="myshift-empty"><div class="big">You're off today</div><div class="sub">${nextLabel}</div></div>`;
+  }
+
+  const hoursThisWeek = mine.reduce((sum, s) => sum + shiftHours(s), 0);
+  const mineNext = nextShifts.filter(s => s.employeeId === session.user.id);
+  const hoursNextWeek = mineNext.reduce((sum, s) => sum + shiftHours(s), 0);
+  document.getElementById('dashHoursThisWeek').textContent = Math.round(hoursThisWeek * 10) / 10;
+  document.getElementById('dashHoursNextWeek').textContent = mineNext.length ? Math.round(hoursNextWeek * 10) / 10 : '—';
+
+  const unread = announcements.filter(a => !a.readByMe);
+  document.getElementById('dashEmployeeAnnouncements').innerHTML = unread.length
+    ? unread.slice(0, 3).map(a => `<div class="ann-item">${a.pinned ? '<span class="pin">Pinned</span>' : ''}<h3>${escapeHtml(a.title)}</h3><div class="meta">Needs your acknowledgment</div></div>`).join('')
+    : "<div class=\"empty-state\">You're all caught up.</div>";
+
+  document.getElementById('dashDocCountEmployee').textContent = docs.length;
+}
 async function loadEmployeeSchedule() { document.getElementById('myScheduleFeed').innerHTML = '<div class="loading-state">Loading…</div>'; document.getElementById('eligibleFeed').innerHTML = '<div class="loading-state">Loading…</div>'; const shifts = await api(`/api/scheduling/shifts?weekStart=${isoDate(currentWeek)}`); const mine = shifts.filter(s => s.employeeId === session.user.id); document.getElementById('myScheduleFeed').innerHTML = mine.length ? mine.map(s => `<div class="my-shift"><strong>${s.date}</strong> · ${s.startTime}–${s.endTime} (${s.roleRequired.toUpperCase()})<br><button class="button danger" data-drop="${s.id}" ${s.status === 'Pending_Swap' ? 'disabled' : ''}>${s.status === 'Pending_Swap' ? 'Swap pending' : 'Offer shift'}</button></div>`).join('') : '<span class="empty-state">No shifts scheduled this week.</span>'; document.querySelectorAll('[data-drop]').forEach(button => button.addEventListener('click', async () => { try { const result = await api(`/api/scheduling/drop-shift?shiftId=${button.dataset.drop}`, {method:'POST'}); toast(result.matches.length ? `${result.matches.length} eligible teammate${result.matches.length === 1 ? '' : 's'} can now claim it.` : 'No eligible coworkers available for a swap right now.', result.matches.length ? 'success' : ''); await loadEmployeeSchedule(); } catch(error) { toast(error.message, 'error'); }})); const eligible = await api('/api/scheduling/eligible-shifts'); document.getElementById('eligibleFeed').innerHTML = eligible.length ? eligible.map(s => `<div class="feed-item"><strong>${s.date}</strong> · ${s.startTime}–${s.endTime}<br>${s.roleRequired.toUpperCase()} · you meet every scheduling rule<br><button class="button" data-claim="${s.swapRequestId}">Claim shift</button></div>`).join('') : '<span class="empty-state">No eligible shifts right now.</span>'; document.querySelectorAll('[data-claim]').forEach(button => button.addEventListener('click', async () => { try { await api(`/api/scheduling/swap-requests/${button.dataset.claim}/claim`, {method:'POST'}); toast('Claim sent to your manager for approval.', 'success'); await loadEmployeeSchedule(); } catch(error) { toast(error.message, 'error'); }})); }
 const isManager = session.user?.role === 'manager'; document.getElementById(isManager ? 'managerSchedule' : 'employeeSchedule').classList.remove('hidden');
 document.getElementById(isManager ? 'managerAnnouncements' : 'employeeAnnouncements').classList.remove('hidden');
+document.getElementById('newAnnouncement').classList.toggle('hidden', !isManager);
 loadAnnouncements().catch(e => toast(e.message, 'error'));
-document.getElementById('ragAskForm').addEventListener('submit', async (e) => {
+renderRagThread();
+loadRagDocuments().catch(e => toast(e.message, 'error'));
+loadDashboard().catch(e => toast(e.message, 'error'));
+document.getElementById('ragAskForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const input = document.getElementById('ragQuestion');
-  const question = input.value.trim();
-  if (!question) return;
-  const answerBox = document.getElementById('ragAnswer');
-  answerBox.innerHTML = '<div class="loading-state">Thinking…</div>';
-  await withBusy(e.target.querySelector('button[type="submit"]'), 'Asking…', async () => {
-    try {
-      const result = await api('/api/rag/query', {method:'POST', body:JSON.stringify({question})});
-      renderRagAnswer(result);
-    } catch (error) {
-      answerBox.innerHTML = '';
-      toast(error.message, 'error');
-    }
-  });
+  askRag(document.getElementById('ragQuestion').value);
 });
-if (isManager) { document.getElementById('departmentsSettingsRow').classList.remove('hidden'); document.getElementById('teamSettingsRow').classList.remove('hidden'); loadManagerSchedule().catch(e => toast(e.message, 'error')); loadTemplates().catch(e => toast(e.message, 'error'));
-  document.getElementById('ragManagerSection').classList.remove('hidden');
-  loadRagDocuments().catch(e => toast(e.message, 'error'));
+document.querySelectorAll('[data-goto]').forEach(link => link.addEventListener('click', (e) => {
+  e.preventDefault();
+  document.querySelector(`[data-panel="${link.dataset.goto}"]`).click();
+}));
+document.getElementById('dashAskForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = document.getElementById('dashAskInput');
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  document.querySelector('[data-panel="rag"]').click();
+  askRag(q);
+});
+document.getElementById('dashAskFormEmployee').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = document.getElementById('dashAskInputEmployee');
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  document.querySelector('[data-panel="rag"]').click();
+  askRag(q);
+});
+if (isManager) { document.getElementById('departmentsSettingsRow').classList.remove('hidden'); document.getElementById('teamSettingsRow').classList.remove('hidden'); loadSchedule().catch(e => toast(e.message, 'error')); loadTemplates().catch(e => toast(e.message, 'error'));
   document.getElementById('newRagDocument').addEventListener('click', () => { openRagDocumentModal(null).catch(error => toast(error.message, 'error')); });
   document.getElementById('ragDocumentForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -607,23 +1380,22 @@ if (isManager) { document.getElementById('departmentsSettingsRow').classList.rem
       } catch (error) { toast(error.message, 'error'); }
     });
   });
-  const savedDensity = localStorage.getItem('crewleeDensity') || 'cozy';
-  document.getElementById('densitySelect').value = savedDensity;
-  if (savedDensity !== 'cozy') document.getElementById('managerGrid').classList.add(`density-${savedDensity}`);
-  document.getElementById('densitySelect').addEventListener('change', (e) => {
-    const managerGrid = document.getElementById('managerGrid');
-    managerGrid.classList.remove('density-compact', 'density-spacious');
-    if (e.target.value !== 'cozy') managerGrid.classList.add(`density-${e.target.value}`);
-    localStorage.setItem('crewleeDensity', e.target.value);
-  });
-  const scheduleLayout = document.querySelector('.schedule-layout');
-  const toggleSidebarBtn = document.getElementById('toggleSidebar');
-  if (localStorage.getItem('crewleeSidebarCollapsed') === 'true') { scheduleLayout.classList.add('sidebar-collapsed'); toggleSidebarBtn.textContent = 'Show panel'; }
-  toggleSidebarBtn.addEventListener('click', () => {
-    const collapsed = scheduleLayout.classList.toggle('sidebar-collapsed');
-    toggleSidebarBtn.textContent = collapsed ? 'Show panel' : 'Hide panel';
-    localStorage.setItem('crewleeSidebarCollapsed', collapsed);
-  }); document.getElementById('newShift').onclick = async () => { try { if (!managerDepartments.length) await loadDepartments(); if (!managerAllEmployees.length) await loadEmployees(); const deptSelect = document.getElementById('shiftDepartment'); deptSelect.innerHTML = managerDepartments.map(d => `<option value="${d.id}">${d.name}</option>`).join(''); const employeeSelect = document.getElementById('shiftEmployee'); employeeSelect.innerHTML = '<option value="">Open shift — assign later</option>' + managerEmployees.map(e => `<option value="${e.id}" data-department="${e.departmentId || ''}">${e.name} · ${e.role.toUpperCase()}</option>`).join(''); employeeSelect.onchange = () => { const selected = employeeSelect.options[employeeSelect.selectedIndex]; if (selected.dataset.department) deptSelect.value = selected.dataset.department; }; document.getElementById('shiftDate').value = isoDate(currentWeek); document.getElementById('shiftModal').classList.remove('hidden'); } catch(e) { toast(e.message, 'error'); }}; document.getElementById('shiftForm').onsubmit = async e => { e.preventDefault(); const employeeValue = document.getElementById('shiftEmployee').value; await withBusy(e.target.querySelector('button[type="submit"]'), 'Creating…', async () => { try { await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:Number(document.getElementById('shiftDepartment').value), employeeId:employeeValue ? Number(employeeValue) : null, date:document.getElementById('shiftDate').value, startTime:document.getElementById('shiftStart').value, endTime:document.getElementById('shiftEnd').value})}); closeModal('shiftModal'); toast('Shift created.', 'success'); await loadManagerSchedule(); } catch(error) { toast(error.message, 'error'); } });}; document.getElementById('autoBuild').addEventListener('click', async () => { try { const result = await api('/api/scheduling/auto-build', {method:'POST', body:JSON.stringify({weekStart:isoDate(currentWeek)})}); toast(`${result.assigned.length} shift(s) assigned${result.unfilledShiftIds.length ? ` · ${result.unfilledShiftIds.length} still open` : ''}.`, 'success'); await loadManagerSchedule(); } catch(e) { toast(e.message, 'error'); }}); document.getElementById('publishWeek').addEventListener('click', async () => { try { const departmentId = document.getElementById('departmentFilter').value; const result = await api('/api/scheduling/publish', {method:'POST', body:JSON.stringify({weekStart:isoDate(currentWeek), departmentId: departmentId ? Number(departmentId) : null})}); toast(`${result.publishedCount} shift(s) published.`, 'success'); await loadManagerSchedule(); } catch(e) { toast(e.message, 'error'); }}); document.getElementById('saveTemplate').addEventListener('click', async () => { const name = await promptDialog('Template name'); if (!name) return; try { await api('/api/scheduling/templates', {method:'POST', body:JSON.stringify({name, weekStart:isoDate(currentWeek)})}); toast('Template saved.', 'success'); await loadTemplates(); } catch(e) { toast(e.message, 'error'); }}); document.getElementById('templateSelect').addEventListener('change', async (e) => { const id = e.target.value; if (!id) return; try { const result = await api(`/api/scheduling/templates/${id}/apply?weekStart=${isoDate(currentWeek)}`, {method:'POST'}); toast(`${result.applied.length} shift(s) applied${result.skippedCount ? ` · ${result.skippedCount} skipped` : ''}.`, 'success'); await loadManagerSchedule(); } catch(err) { toast(err.message, 'error'); } finally { e.target.value = ''; }}); document.getElementById('previousWeek').onclick = () => { currentWeek.setDate(currentWeek.getDate() - 7); loadManagerSchedule().catch(e => toast(e.message, 'error')); }; document.getElementById('nextWeek').onclick = () => { currentWeek.setDate(currentWeek.getDate() + 7); loadManagerSchedule().catch(e => toast(e.message, 'error')); }; document.getElementById('departmentFilter').onchange = () => loadManagerSchedule().catch(e => toast(e.message, 'error')); document.getElementById('addDeptBtn').addEventListener('click', async () => { const nameInput = document.getElementById('newDeptName'); const name = nameInput.value.trim(); if (!name) return; try { await api('/api/scheduling/departments', {method:'POST', body:JSON.stringify({name, roleCategory:document.getElementById('newDeptCategory').value})}); nameInput.value = ''; await loadDepartments(); renderDepartmentsSettings(); toast('Department added.', 'success'); } catch(e) { toast(e.message, 'error'); }});
+  document.querySelectorAll('.view-switch button').forEach(b => b.addEventListener('click', () => setViewMode(b.dataset.view)));
+  document.getElementById('navPrev').addEventListener('click', () => nav(-1));
+  document.getElementById('navNext').addEventListener('click', () => nav(1));
+  document.getElementById('btnToday').addEventListener('click', goToday);
+
+  const toolsDrawer = document.getElementById('toolsDrawer');
+  const toolsVeil = document.getElementById('toolsVeil');
+  document.getElementById('btnBuildTools').addEventListener('click', () => { toolsDrawer.classList.add('open'); toolsVeil.classList.add('open'); });
+  document.getElementById('toolsClose').addEventListener('click', () => { toolsDrawer.classList.remove('open'); toolsVeil.classList.remove('open'); });
+  toolsVeil.addEventListener('click', () => { toolsDrawer.classList.remove('open'); toolsVeil.classList.remove('open'); });
+
+  document.getElementById('autoBuild').addEventListener('click', async () => { try { const result = await api('/api/scheduling/auto-build', {method:'POST', body:JSON.stringify({weekStart:isoDate(currentWeek)})}); toast(`${result.assigned.length} shift(s) assigned${result.unfilledShiftIds.length ? ` · ${result.unfilledShiftIds.length} still open` : ''}.`, 'success'); await loadSchedule(); } catch(e) { toast(e.message, 'error'); }});
+  document.getElementById('btnPublish').addEventListener('click', async () => { try { const departmentId = document.getElementById('toolDepartment').value; const result = await api('/api/scheduling/publish', {method:'POST', body:JSON.stringify({weekStart:isoDate(currentWeek), departmentId: departmentId ? Number(departmentId) : null})}); toast(`${result.publishedCount} shift(s) published.`, 'success'); await loadSchedule(); } catch(e) { toast(e.message, 'error'); }});
+  document.getElementById('saveTemplate').addEventListener('click', async () => { const name = await promptDialog('Template name'); if (!name) return; try { await api('/api/scheduling/templates', {method:'POST', body:JSON.stringify({name, weekStart:isoDate(currentWeek)})}); toast('Template saved.', 'success'); await loadTemplates(); } catch(e) { toast(e.message, 'error'); }});
+  document.getElementById('templateSelect').addEventListener('change', async (e) => { const id = e.target.value; if (!id) return; try { const result = await api(`/api/scheduling/templates/${id}/apply?weekStart=${isoDate(currentWeek)}`, {method:'POST'}); toast(`${result.applied.length} shift(s) applied${result.skippedCount ? ` · ${result.skippedCount} skipped` : ''}.`, 'success'); await loadSchedule(); } catch(err) { toast(err.message, 'error'); } finally { e.target.value = ''; }});
+  document.getElementById('addDeptBtn').addEventListener('click', async () => { const nameInput = document.getElementById('newDeptName'); const name = nameInput.value.trim(); if (!name) return; try { await api('/api/scheduling/departments', {method:'POST', body:JSON.stringify({name, roleCategory:document.getElementById('newDeptCategory').value})}); nameInput.value = ''; await loadDepartments(); renderDepartmentsSettings(); toast('Department added.', 'success'); } catch(e) { toast(e.message, 'error'); }});
   document.getElementById('dayPlanForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
@@ -664,11 +1436,14 @@ if (isManager) { document.getElementById('departmentsSettingsRow').classList.rem
   document.getElementById('cancelReqEdit').addEventListener('click', resetRequirementForm);
   document.getElementById('generateShifts').addEventListener('click', async () => {
     try {
-      const departmentId = document.getElementById('departmentFilter').value;
+      const departmentId = document.getElementById('toolDepartment').value;
       const result = await api('/api/scheduling/requirements/generate-shifts', {method:'POST', body:JSON.stringify({weekStart:isoDate(currentWeek), departmentId: departmentId ? Number(departmentId) : null})});
       toast(`${result.created.length} shift(s) generated${result.skippedCount ? ` · ${result.skippedCount} already covered` : ''}.`, 'success');
-      await loadManagerSchedule();
+      await loadSchedule();
     } catch (e) { toast(e.message, 'error'); }
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.read-chip')) document.querySelectorAll('.read-chip.open').forEach(chip => chip.classList.remove('open'));
   });
   document.getElementById('newAnnouncement').addEventListener('click', () => { document.getElementById('announcementForm').reset(); document.getElementById('announcementModal').classList.remove('hidden'); });
   document.getElementById('announcementForm').addEventListener('submit', async (e) => {
@@ -702,8 +1477,15 @@ if (isManager) { document.getElementById('departmentsSettingsRow').classList.rem
         })});
         closeModal('employeeCardModal');
         toast('Employee profile saved.', 'success');
-        await loadManagerSchedule();
+        await loadSchedule();
       } catch (error) { toast(error.message, 'error'); }
     });
   });
 } else { loadEmployeeSchedule().catch(e => toast(e.message, 'error')); document.getElementById('refreshEmployee').onclick = () => loadEmployeeSchedule().catch(e => toast(e.message, 'error')); document.getElementById('editAvailability').onclick = async () => { try { const current = (await api('/api/scheduling/availability')).weeklyAvailability || {}; const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']; document.getElementById('availabilityRows').innerHTML = days.map(day => { const slot = current[day]?.[0]; return `<label class="availability-row"><span><input type="checkbox" data-day-enabled="${day}" ${slot ? 'checked' : ''}/> ${day}</span><input data-day-start="${day}" type="time" value="${slot?.start || '09:00'}" ${slot ? '' : 'disabled'}/><input data-day-end="${day}" type="time" value="${slot?.end || '17:00'}" ${slot ? '' : 'disabled'}/></label>`; }).join(''); document.querySelectorAll('[data-day-enabled]').forEach(box => box.addEventListener('change', () => document.querySelectorAll(`[data-day-start="${box.dataset.dayEnabled}"], [data-day-end="${box.dataset.dayEnabled}"]`).forEach(input => input.disabled = !box.checked))); document.getElementById('availabilityModal').classList.remove('hidden'); } catch(e) { toast(e.message, 'error'); }}; document.getElementById('availabilityForm').onsubmit = async e => { e.preventDefault(); const availability = {}; document.querySelectorAll('[data-day-enabled]').forEach(box => { if (box.checked) availability[box.dataset.dayEnabled] = [{start:document.querySelector(`[data-day-start="${box.dataset.dayEnabled}"]`).value, end:document.querySelector(`[data-day-end="${box.dataset.dayEnabled}"]`).value}]; }); await withBusy(e.target.querySelector('button[type="submit"]'), 'Saving…', async () => { try { await api('/api/scheduling/availability', {method:'PATCH', body:JSON.stringify({weeklyAvailability:availability})}); closeModal('availabilityModal'); toast('Availability saved.', 'success'); } catch(error) { toast(error.message, 'error'); } }); }; document.querySelectorAll('[data-employee-panel]').forEach(tab => tab.addEventListener('click', () => { document.querySelectorAll('[data-employee-panel]').forEach(t => t.classList.toggle('active', t === tab)); document.getElementById('myScheduleFeed').classList.toggle('hidden', tab.dataset.employeePanel !== 'my'); document.getElementById('eligibleFeed').classList.toggle('hidden', tab.dataset.employeePanel !== 'eligible'); })); }
+
+// Activate whichever panel the URL actually points at (a refresh, a direct link, or a
+// bookmark should land the user back where they were, not always on the dashboard), then
+// normalize the address bar so /app and /app/dashboard agree on one canonical URL.
+const initialPanel = panelFromPath(window.location.pathname);
+if (initialPanel !== 'dashboard') switchToPanel(initialPanel, { pushHistory: false });
+history.replaceState({ panel: initialPanel }, '', `/app/${initialPanel}`);

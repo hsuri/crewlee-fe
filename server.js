@@ -29,7 +29,11 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pages', 'login.html'));
 });
 
-app.get('/app', (req, res) => {
+// Each tab in app.html (dashboard, schedule, announcements, rag, settings) is its own
+// real route so a refresh keeps the user on the page they were looking at, rather than
+// bouncing back to a default tab. All of them serve the same shell; app.js reads the
+// path on load to decide which panel to show (see switchToPanel/panelFromPath).
+app.get(['/app', '/app/dashboard', '/app/schedule', '/app/announcements', '/app/rag', '/app/settings'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pages', 'app.html'));
 });
 
