@@ -57,7 +57,12 @@ settingsBtn.addEventListener('click', async () => {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-settings').classList.add('active');
   settingsBtn.classList.add('active');
-  if (isManager) { if (!managerDepartments.length) await loadDepartments(); renderDepartmentsSettings(); }
+  if (isManager) {
+    if (!managerDepartments.length) await loadDepartments();
+    renderDepartmentsSettings();
+    if (!managerAllEmployees.length) await loadEmployees();
+    renderTeamSettings();
+  }
 });
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
@@ -73,7 +78,10 @@ let currentWeek = mondayOf(isoDate(new Date()));
 let currentMonth = new Date(); currentMonth.setDate(1);
 let focusDay = isoDate(new Date());
 let viewMode = 'week'; // 'month' | 'week' | 'day'
-let managerEmployees = [], managerShifts = [], managerDepartments = [], managerTemplates = [];
+// managerEmployees stays "active roster only" everywhere it's already used (calendar grid,
+// shift-assignee dropdown, Employee Card modal); managerAllEmployees additionally carries
+// inactive employees, needed only by the Team settings roster so a manager can reactivate them.
+let managerEmployees = [], managerAllEmployees = [], managerShifts = [], managerDepartments = [], managerTemplates = [];
 let monthShifts = []; // flattened shifts across the visible 6-week month grid
 const collapsedGroups = new Set();
 let selectedShift = null, focusedCell = null, shiftClipboard = null;
@@ -145,6 +153,10 @@ async function loadDepartments() {
   const toolSelect = document.getElementById('toolDepartment');
   if (toolSelect) { const previous = toolSelect.value; toolSelect.innerHTML = options; toolSelect.value = managerDepartments.some(d => String(d.id) === previous) ? previous : ''; }
 }
+async function loadEmployees(departmentId) {
+  managerAllEmployees = await api(`/api/scheduling/employees${departmentId ? `?departmentId=${departmentId}` : ''}`);
+  managerEmployees = managerAllEmployees.filter(e => e.active);
+}
 async function loadTemplates() {
   managerTemplates = await api('/api/scheduling/templates');
   document.getElementById('templateSelect').innerHTML = '<option value="">Apply template…</option>' + managerTemplates.map(t => `<option value="${t.id}">${t.name} (${t.shiftCount})</option>`).join('');
@@ -164,6 +176,50 @@ function renderDepartmentsSettings() {
     try { await api(`/api/scheduling/departments/${departmentId}`, {method:'DELETE'}); await loadDepartments(); renderDepartmentsSettings(); toast('Department deleted.', 'success'); await loadSchedule(); } catch (error) { toast(error.message, 'error'); }
   }));
 }
+function renderTeamSettings() {
+  document.getElementById('newEmpDepartment').innerHTML = '<option value="">No department</option>' + managerDepartments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  document.getElementById('teamList').innerHTML = managerAllEmployees.length
+    ? managerAllEmployees.map(e => `<div class="dept-row team-row${e.active ? '' : ' inactive'}"><span class="team-name">${e.name}</span><span class="role-badge">${e.role.toUpperCase()}</span><span class="team-dept">${e.departmentName || 'Unassigned'}</span><button type="button" class="button ${e.active ? 'danger' : 'secondary'}" data-toggle-employee="${e.id}">${e.active ? 'Deactivate' : 'Reactivate'}</button></div>`).join('')
+    : '<span class="empty-state">No team members yet.</span>';
+  document.querySelectorAll('[data-toggle-employee]').forEach(button => button.addEventListener('click', async () => {
+    const employeeId = Number(button.dataset.toggleEmployee);
+    const employee = managerAllEmployees.find(e => e.id === employeeId);
+    if (employee.active) {
+      const message = `Deactivate ${employee.name}? They will no longer be able to log in or be assigned new shifts. Past shifts and history stay intact, and you can reactivate them later.`;
+      if (!(await confirmDialog(message, { danger: true, confirmLabel: 'Deactivate' }))) return;
+    }
+    try {
+      await api(`/api/scheduling/employees/${employeeId}`, {method:'PATCH', body:JSON.stringify({
+        departmentId: employee.departmentId, maxHoursPerWeek: employee.maxHoursPerWeek, minHoursPerWeek: employee.minHoursPerWeek,
+        preferredHoursPerWeek: employee.preferredHoursPerWeek, schedulingConfidence: employee.schedulingConfidence,
+        schedulingNotes: employee.schedulingNotes, autoScheduleOptOut: employee.autoScheduleOptOut, active: !employee.active,
+      })});
+      const wasActive = employee.active;
+      await loadEmployees(); renderTeamSettings(); await loadSchedule();
+      toast(`${employee.name} ${wasActive ? 'deactivated' : 'reactivated'}.`, 'success');
+    } catch (error) { toast(error.message, 'error'); }
+  }));
+}
+document.getElementById('addEmpBtn').addEventListener('click', async () => {
+  const nameInput = document.getElementById('newEmpName');
+  const emailInput = document.getElementById('newEmpEmail');
+  const name = nameInput.value.trim();
+  const email = emailInput.value.trim();
+  if (!name || !email) return;
+  try {
+    const departmentValue = document.getElementById('newEmpDepartment').value;
+    // No separate role picker -- a department already implies its role category (FOH/BOH);
+    // with no department selected there's nothing to derive from, so default to FOH.
+    const department = departmentValue ? managerDepartments.find(d => d.id === Number(departmentValue)) : null;
+    await api('/api/scheduling/employees', {method:'POST', body:JSON.stringify({
+      name, email, roleCategory: department ? department.roleCategory : 'foh',
+      departmentId: departmentValue ? Number(departmentValue) : null,
+    })});
+    nameInput.value = ''; emailInput.value = '';
+    await loadEmployees(); renderTeamSettings();
+    toast('Employee added. They can set a password at their first login.', 'success');
+  } catch (error) { toast(error.message, 'error'); }
+});
 const closeModal = id => document.getElementById(id).classList.add('hidden');
 document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => closeModal(button.dataset.close)));
 // Clicking the dimmed backdrop itself (not the modal card) closes it -- every static modal
@@ -268,8 +324,8 @@ async function loadWeek() {
   renderScheduleView();
   await ensureDepartments();
   const week = isoDate(currentWeek);
-  [managerEmployees, managerShifts] = await Promise.all([
-    api('/api/scheduling/employees'),
+  [, managerShifts] = await Promise.all([
+    loadEmployees(),
     api(`/api/scheduling/shifts?weekStart=${week}`),
   ]);
   renderWeek();
@@ -433,8 +489,8 @@ async function loadDay() {
   await ensureDepartments();
   currentWeek = mondayOf(focusDay);
   const week = isoDate(currentWeek);
-  [managerEmployees, managerShifts] = await Promise.all([
-    api('/api/scheduling/employees'),
+  [, managerShifts] = await Promise.all([
+    loadEmployees(),
     api(`/api/scheduling/shifts?weekStart=${week}`),
   ]);
   renderDay();
@@ -1082,7 +1138,7 @@ document.getElementById('dashAskFormEmployee').addEventListener('submit', (e) =>
   document.querySelector('[data-panel="rag"]').click();
   askRag(q);
 });
-if (isManager) { document.getElementById('departmentsSettingsRow').classList.remove('hidden'); loadSchedule().catch(e => toast(e.message, 'error')); loadTemplates().catch(e => toast(e.message, 'error'));
+if (isManager) { document.getElementById('departmentsSettingsRow').classList.remove('hidden'); document.getElementById('teamSettingsRow').classList.remove('hidden'); loadSchedule().catch(e => toast(e.message, 'error')); loadTemplates().catch(e => toast(e.message, 'error'));
   document.getElementById('newRagDocument').addEventListener('click', () => { openRagDocumentModal(null).catch(error => toast(error.message, 'error')); });
   document.getElementById('ragDocumentForm').addEventListener('submit', async (e) => {
     e.preventDefault();
