@@ -20,6 +20,10 @@
         </svg>
         Crewlee
       </div>
+      <div class="auth-tabs" id="authTabs">
+        <button type="button" class="auth-tab" id="tabLogin">Log in</button>
+        <button type="button" class="auth-tab" id="tabSignup">Sign up</button>
+      </div>
       <h1 id="loginHeading">Sign in</h1>
       <p id="loginSubtext">Access your restaurant's workspace.</p>
       <form class="login-form" id="loginForm">
@@ -27,7 +31,6 @@
         <input type="password" id="password" placeholder="Password" required autocomplete="current-password" />
         <input type="password" id="confirmPassword" placeholder="Confirm password" autocomplete="new-password" class="hidden" />
         <button type="submit" id="submitBtn">Sign In</button>
-        <button type="button" id="backToLoginBtn" class="link-btn hidden">Back to sign in</button>
         <div class="error hidden" id="loginError"></div>
       </form>
       <div class="hint" id="loginHint">

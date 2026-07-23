@@ -33,6 +33,38 @@ body {
   margin-bottom: 28px;
 }
 
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 24px;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 9px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-tab:hover { color: var(--text-primary); }
+
+.auth-tab.active {
+  background: var(--white);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
 .login-box h1 {
   margin: 0 0 8px;
   font-size: 26px;
@@ -87,18 +119,6 @@ body {
 
 .login-form button:hover { background: var(--accent-hover); }
 .login-form button:disabled { opacity: 0.6; cursor: default; }
-
-.login-form button.link-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 400;
-  cursor: pointer;
-  padding: 4px 0;
-  text-decoration: underline;
-}
-.login-form button.link-btn:hover { background: none; color: var(--text-primary); }
 
 .error {
   color: #DC2626;
