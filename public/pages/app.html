@@ -393,7 +393,63 @@
       </form>
     </div>
 
+    <div class="modal-backdrop hidden" id="readReceiptsModal">
+      <div class="modal">
+        <h2>Read receipts</h2>
+        <p id="readReceiptsSubtitle"></p>
+        <div class="requirement-list" id="readReceiptsList"></div>
+        <div class="modal-actions"><button type="button" class="button secondary" data-close="readReceiptsModal">Close</button></div>
+      </div>
+    </div>
 
+    <div class="overlay hidden" id="settingsOverlay">
+      <div class="settings-panel">
+        <h2>Settings</h2>
+        <div class="settings-row">
+          <div class="settings-label">Name</div>
+          <div class="settings-value" id="settingsName">—</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">Email</div>
+          <div class="settings-value" id="settingsEmail">—</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">Role</div>
+          <div class="settings-value" id="settingsRole">—</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">Restaurant</div>
+          <div class="settings-value" id="settingsRestaurant">—</div>
+        </div>
+        <!-- Only shown when this login matched more than one restaurant account for the same
+             email+password (see login.js / auth.py's `accounts` response) -- each button swaps
+             the active session to an already-authenticated sibling account, no re-login needed. -->
+        <div class="settings-row hidden" id="switchRestaurantRow">
+          <div class="settings-label">Switch restaurant</div>
+          <div class="account-switch-list" id="accountSwitchList"></div>
+        </div>
+        <div class="settings-row hidden" id="departmentsSettingsRow">
+          <div class="settings-label">Departments</div>
+          <div class="dept-list" id="departmentsList"></div>
+          <div class="dept-add-row">
+            <input id="newDeptName" type="text" placeholder="New department name" />
+            <select id="newDeptCategory"><option value="foh">FOH</option><option value="boh">BOH</option></select>
+            <button type="button" class="button secondary" id="addDeptBtn">Add</button>
+          </div>
+        </div>
+        <div class="settings-row hidden" id="teamSettingsRow">
+          <div class="settings-label">Team</div>
+          <div class="dept-list" id="teamList"></div>
+          <div class="team-add-row">
+            <input id="newEmpName" type="text" placeholder="Full name" />
+            <input id="newEmpEmail" type="email" placeholder="Email" />
+            <select id="newEmpDepartment"><option value="">No department</option></select>
+            <button type="button" class="button" id="addEmpBtn">Add employee</button>
+          </div>
+        </div>
+        <button class="logout-btn" id="logoutBtn">Log Out</button>
+      </div>
+    </div>
     <script type="module" src="/scripts/app.js"></script>
   </body>
 </html>

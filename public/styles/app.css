@@ -354,6 +354,33 @@ a.button { display: inline-block; text-decoration: none; }
 }
 .logout-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+.account-switch-list { display: grid; gap: 8px; }
+.account-switch-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+.account-switch-option:hover { border-color: var(--accent); background: var(--white); }
+.account-switch-option.active {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
+  cursor: default;
+}
+.account-switch-option .role-badge { flex-shrink: 0; }
+
 .dept-list { display: grid; gap: 8px; }
 .dept-row {
   display: flex;

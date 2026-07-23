@@ -33,6 +33,38 @@ body {
   margin-bottom: 28px;
 }
 
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 24px;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 9px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-tab:hover { color: var(--text-primary); }
+
+.auth-tab.active {
+  background: var(--white);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
 .login-box h1 {
   margin: 0 0 8px;
   font-size: 26px;
@@ -88,18 +120,6 @@ body {
 .login-form button:hover { background: var(--accent-hover); }
 .login-form button:disabled { opacity: 0.6; cursor: default; }
 
-.login-form button.link-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 400;
-  cursor: pointer;
-  padding: 4px 0;
-  text-decoration: underline;
-}
-.login-form button.link-btn:hover { background: none; color: var(--text-primary); }
-
 .error {
   color: #DC2626;
   font-size: 13px;
@@ -107,6 +127,52 @@ body {
   background: #FEF2F2;
   border-radius: 6px;
   border-left: 3px solid #DC2626;
+}
+
+.account-picker p {
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.account-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.account-option:hover {
+  border-color: var(--accent);
+  background: var(--white);
+}
+
+.account-option .account-resto {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.account-option .account-role {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .hint {

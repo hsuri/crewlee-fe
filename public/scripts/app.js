@@ -1,5 +1,5 @@
 import { createApiClient } from './lib/api.js';
-import { clearSession, getSession } from './lib/session.js';
+import { clearSession, getAccounts, getSession, setAccounts, setSession } from './lib/session.js';
 import { toast } from './lib/toast.js';
 import { confirmDialog, promptDialog } from './lib/dialog.js';
 
@@ -30,6 +30,49 @@ document.getElementById('userRole').textContent = session.user?.role || '—';
 document.getElementById('settingsName').textContent = session.user?.name || '—';
 document.getElementById('settingsEmail').textContent = session.user?.email || '—';
 document.getElementById('settingsRole').textContent = session.user?.role || '—';
+
+const settingsRestaurantEl = document.getElementById('settingsRestaurant');
+const otherRestaurants = session.user?.otherRestaurants || [];
+settingsRestaurantEl.textContent = session.user?.restaurantName || '—';
+if (otherRestaurants.length) {
+  // Informational only -- this account's password disambiguated cleanly, but we have no
+  // token for the sibling account(s), so this is a pointer to log in (or sign up, if it's
+  // still an unclaimed invite) separately rather than a live switch (contrast with the
+  // accountSwitchList below). `status` comes from auth.py's login response.
+  const parts = otherRestaurants.map(r => r.status === 'pending' ? `${r.name} (invite pending — sign up there)` : `${r.name} (log in there separately)`);
+  const hint = document.createElement('div');
+  hint.style.cssText = 'font-size:12px;color:var(--text-muted);margin-top:4px;';
+  hint.textContent = `You also have an account at ${parts.join(', ')}.`;
+  settingsRestaurantEl.after(hint);
+}
+
+// Sibling accounts cached at login time (same email+password matched more than one
+// restaurant -- see auth.py's `accounts` response) -- each is already authenticated, so
+// switching is just swapping which {token, user} is active, no re-login required.
+const switchRestaurantRow = document.getElementById('switchRestaurantRow');
+const accountSwitchList = document.getElementById('accountSwitchList');
+const siblingAccounts = getAccounts();
+if (siblingAccounts.length > 1) {
+  switchRestaurantRow.classList.remove('hidden');
+  accountSwitchList.innerHTML = '';
+  siblingAccounts.forEach((account) => {
+    const isActive = account.user.id === session.user?.id;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `account-switch-option${isActive ? ' active' : ''}`;
+    button.innerHTML = `<span></span><span class="role-badge"></span>`;
+    button.children[0].textContent = account.user.restaurantName || 'Restaurant';
+    button.children[1].textContent = account.user.role || '';
+    if (!isActive) {
+      button.addEventListener('click', () => {
+        setSession(account);
+        setAccounts(siblingAccounts);
+        window.location.reload();
+      });
+    }
+    accountSwitchList.appendChild(button);
+  });
+}
 
 // Confirm the token is still valid; if not, bounce to login.
 fetch('/api/me', { headers: { Authorization: `Bearer ${session.token}` } })

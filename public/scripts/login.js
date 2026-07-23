@@ -1,4 +1,4 @@
-import { getSession, setSession } from './lib/session.js';
+import { getSession, setAccounts, setSession } from './lib/session.js';
 
 const form = document.getElementById('loginForm');
 const submitBtn = document.getElementById('submitBtn');
@@ -6,54 +6,119 @@ const errorDiv = document.getElementById('loginError');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const confirmInput = document.getElementById('confirmPassword');
-const backToLoginBtn = document.getElementById('backToLoginBtn');
 const heading = document.getElementById('loginHeading');
 const subtext = document.getElementById('loginSubtext');
-const hint = document.getElementById('loginHint');
+const tabLogin = document.getElementById('tabLogin');
+const tabSignup = document.getElementById('tabSignup');
+const accountPicker = document.getElementById('accountPicker');
+const accountList = document.getElementById('accountList');
+
+// The same email+password matched more than one restaurant account (see auth.py's `accounts`
+// response) -- every entry is already a valid {token, user}, so picking one just finishes
+// login with that account instead of submitting anything else.
+function showAccountPicker(accounts) {
+  form.classList.add('hidden');
+  accountPicker.classList.remove('hidden');
+  accountList.innerHTML = '';
+  accounts.forEach((account) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'account-option';
+    button.innerHTML = `<span class="account-resto"></span><span class="account-role"></span>`;
+    button.querySelector('.account-resto').textContent = account.user.restaurantName || 'Restaurant';
+    button.querySelector('.account-role').textContent = account.user.role || '';
+    button.addEventListener('click', () => {
+      setAccounts(accounts);
+      setSession(account);
+      window.location.href = '/app';
+    });
+    accountList.appendChild(button);
+  });
+}
 
 if (getSession()) {
   window.location.href = '/app';
 }
 
-// mode is 'login' until the backend tells us this email has no password set yet (the
-// `pending` flag on a failed /api/auth/login) -- then we switch this same page into a
-// self-serve "choose your password" form rather than a separate route/page.
-let mode = 'login';
+// mode is 'login' or 'signup' while on the tabs; 'setPassword' is a sub-state entered once we
+// know (via signup's invite-status check, or login's `pending` fallback below) that the account
+// has no password yet -- the Log in / Sign up tabs stay visible throughout so it's always one
+// click to go back to either top-level mode.
+let mode = new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'signup' : 'login';
 
-function enterSetPasswordMode(email) {
+function setActiveTab(tab) {
+  tabLogin.classList.toggle('active', tab === 'login');
+  tabSignup.classList.toggle('active', tab === 'signup');
+}
+
+function hideAccountPicker() {
+  accountPicker.classList.add('hidden');
+  form.classList.remove('hidden');
+}
+
+function enterSignupMode() {
+  hideAccountPicker();
+  mode = 'signup';
+  setActiveTab('signup');
+  emailInput.value = '';
+  emailInput.readOnly = false;
+  passwordInput.classList.add('hidden');
+  passwordInput.required = false;
+  passwordInput.value = '';
+  confirmInput.classList.add('hidden');
+  confirmInput.required = false;
+  confirmInput.value = '';
+  heading.textContent = 'Sign up';
+  subtext.textContent = "Enter the email your manager or admin used to invite you.";
+  submitBtn.textContent = 'Continue';
+  errorDiv.classList.add('hidden');
+  emailInput.focus();
+}
+
+function enterSetPasswordMode(email, restaurantName) {
+  hideAccountPicker();
   mode = 'setPassword';
+  setActiveTab('signup');
   emailInput.value = email;
   emailInput.readOnly = true;
+  passwordInput.classList.remove('hidden');
+  passwordInput.required = true;
   passwordInput.value = '';
   passwordInput.placeholder = 'Choose a password (min 8 characters)';
   confirmInput.classList.remove('hidden');
   confirmInput.required = true;
-  backToLoginBtn.classList.remove('hidden');
   heading.textContent = 'Create your password';
-  subtext.textContent = `Finish setting up ${email}.`;
+  subtext.textContent = restaurantName
+    ? `Finish setting up ${email} at ${restaurantName}.`
+    : `Finish setting up ${email}.`;
   submitBtn.textContent = 'Create Password';
-  hint.classList.add('hidden');
   errorDiv.classList.add('hidden');
   passwordInput.focus();
 }
 
 function enterLoginMode() {
+  hideAccountPicker();
   mode = 'login';
+  setActiveTab('login');
   emailInput.readOnly = false;
+  passwordInput.classList.remove('hidden');
+  passwordInput.required = true;
   passwordInput.value = '';
   passwordInput.placeholder = 'Password';
   confirmInput.value = '';
   confirmInput.classList.add('hidden');
   confirmInput.required = false;
-  backToLoginBtn.classList.add('hidden');
   heading.textContent = 'Sign in';
   subtext.textContent = "Access your restaurant's workspace.";
   submitBtn.textContent = 'Sign In';
-  hint.classList.remove('hidden');
   errorDiv.classList.add('hidden');
 }
 
-backToLoginBtn.addEventListener('click', enterLoginMode);
+if (mode === 'signup') enterSignupMode();
+else setActiveTab('login');
+
+tabLogin.addEventListener('click', enterLoginMode);
+tabSignup.addEventListener('click', enterSignupMode);
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -71,14 +136,38 @@ form.addEventListener('submit', async (e) => {
       const data = await res.json();
       if (!res.ok) {
         if (data.pending) {
-          enterSetPasswordMode(emailInput.value);
+          enterSetPasswordMode(emailInput.value, data.restaurantName);
           submitBtn.disabled = false;
           return;
         }
         throw new Error(data.detail || 'Invalid email or password');
       }
+      if (data.accounts) {
+        showAccountPicker(data.accounts);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign In';
+        return;
+      }
       setSession(data);
       window.location.href = '/app';
+    } else if (mode === 'signup') {
+      submitBtn.textContent = 'Checking...';
+      const email = emailInput.value.trim();
+      const res = await fetch(`/api/auth/invite-status?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Something went wrong');
+
+      if (data.status === 'pending') {
+        enterSetPasswordMode(email, data.restaurantName);
+      } else if (data.status === 'active') {
+        enterLoginMode();
+        emailInput.value = email;
+        subtext.textContent = 'This account is already set up — enter your password to log in.';
+        passwordInput.focus();
+      } else {
+        throw new Error("We couldn't find an invite for that email. Ask your manager or admin to add you first.");
+      }
+      submitBtn.disabled = false;
     } else {
       submitBtn.textContent = 'Creating...';
       if (passwordInput.value !== confirmInput.value) {
@@ -98,6 +187,6 @@ form.addEventListener('submit', async (e) => {
     errorDiv.textContent = err.message;
     errorDiv.classList.remove('hidden');
     submitBtn.disabled = false;
-    submitBtn.textContent = mode === 'login' ? 'Sign In' : 'Create Password';
+    submitBtn.textContent = mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Continue' : 'Create Password';
   }
 });
