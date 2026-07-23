@@ -88,6 +88,18 @@ body {
 .login-form button:hover { background: var(--accent-hover); }
 .login-form button:disabled { opacity: 0.6; cursor: default; }
 
+.login-form button.link-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: underline;
+}
+.login-form button.link-btn:hover { background: none; color: var(--text-primary); }
+
 .error {
   color: #DC2626;
   font-size: 13px;

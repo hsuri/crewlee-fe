@@ -433,6 +433,7 @@ a.button { display: inline-block; text-decoration: none; }
   padding: 28px;
   box-shadow: var(--shadow-lg);
   animation: slideIn 0.2s ease-out;
+  overflow-y: auto;
 }
 @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 .settings-panel h2 {
@@ -497,6 +498,27 @@ a.button { display: inline-block; text-decoration: none; }
 }
 .dept-add-row input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font: 13px inherit; }
 .dept-add-row select { padding: 8px; border: 1px solid var(--border); border-radius: 6px; font: 13px inherit; }
+
+.team-row { flex-wrap: wrap; }
+.team-name { flex: 1; min-width: 0; font-size: 13px; }
+.team-dept { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.dept-row.inactive { opacity: 0.55; }
+
+.team-add-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.team-add-row input,
+.team-add-row select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: 13px inherit;
+  color: var(--text-primary);
+}
 
 .toolbar-select {
   padding: 9px 12px;
