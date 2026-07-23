@@ -39,31 +39,48 @@ fetch('/api/me', { headers: { Authorization: `Bearer ${session.token}` } })
     window.location.href = '/login';
   });
 
-function switchToPanel(panelName) {
-  document.querySelectorAll('[data-panel]').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  settingsBtn.classList.remove('active');
-  const tab = document.querySelector(`[data-panel="${panelName}"]`);
-  if (tab) tab.classList.add('active');
-  document.getElementById(`panel-${panelName}`).classList.add('active');
+// Each panel is a real page (/app/<panel>) so a refresh lands back where the user was,
+// instead of always resetting to the dashboard. switchToPanel does the DOM work and the
+// URL bookkeeping; loadPanelData carries the per-panel side effects (currently only
+// Settings needs to lazy-load its data) so they run the same way whether the panel was
+// reached by clicking a tab, loading a direct URL, or hitting browser back/forward.
+const VALID_PANELS = ['dashboard', 'schedule', 'announcements', 'rag', 'settings'];
+function panelFromPath(pathname) {
+  const segment = pathname.replace(/^\/app\/?/, '');
+  return VALID_PANELS.includes(segment) ? segment : 'dashboard';
 }
-document.querySelectorAll('[data-panel]').forEach(tab => {
-  tab.addEventListener('click', () => switchToPanel(tab.dataset.panel));
-});
 
-const settingsBtn = document.getElementById('settingsBtn');
-settingsBtn.addEventListener('click', async () => {
-  document.querySelectorAll('[data-panel]').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.getElementById('panel-settings').classList.add('active');
-  settingsBtn.classList.add('active');
-  if (isManager) {
+async function loadPanelData(panelName) {
+  if (panelName === 'settings' && isManager) {
     if (!managerDepartments.length) await loadDepartments();
     renderDepartmentsSettings();
     if (!managerAllEmployees.length) await loadEmployees();
     renderTeamSettings();
   }
+}
+
+function switchToPanel(panelName, { pushHistory = true } = {}) {
+  document.querySelectorAll('[data-panel]').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  settingsBtn.classList.remove('active');
+  const tab = document.querySelector(`.tab[data-panel="${panelName}"]`);
+  if (tab) tab.classList.add('active');
+  if (panelName === 'settings') settingsBtn.classList.add('active');
+  document.getElementById(`panel-${panelName}`).classList.add('active');
+  if (pushHistory) history.pushState({ panel: panelName }, '', `/app/${panelName}`);
+  loadPanelData(panelName).catch(e => toast(e.message, 'error'));
+}
+document.querySelectorAll('[data-panel]').forEach(tab => {
+  tab.addEventListener('click', () => switchToPanel(tab.dataset.panel));
 });
+
+window.addEventListener('popstate', (event) => {
+  const panelName = (event.state && event.state.panel) || panelFromPath(window.location.pathname);
+  switchToPanel(panelName, { pushHistory: false });
+});
+
+const settingsBtn = document.getElementById('settingsBtn');
+settingsBtn.addEventListener('click', () => switchToPanel('settings'));
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
   clearSession();
@@ -246,6 +263,24 @@ function weekGroups() {
   return groups;
 }
 function closeAnyPopover() { document.querySelectorAll('.quick-pop').forEach(p => p.remove()); }
+// Quick-add/edit popovers append to <body> and position with `fixed` viewport coordinates
+// (not nested inside the scrollable week/day grid) so they're never clipped by the grid's
+// own scroll container -- previously a popover opened near the bottom of a long employee
+// list rendered below the visible area, forcing a scroll to reach it. `anchorRect` is
+// whatever the popover should appear right below (a track, a cell, a shift block); this
+// measures the popover's real size first, then flips it above the anchor if there isn't
+// room below, and clamps horizontally so it never runs off either edge of the viewport.
+function positionPopover(pop, anchorRect) {
+  document.body.appendChild(pop);
+  const margin = 8;
+  const popRect = pop.getBoundingClientRect();
+  let left = Math.max(margin, Math.min(anchorRect.left, window.innerWidth - popRect.width - margin));
+  let top = anchorRect.bottom + 6;
+  if (top + popRect.height > window.innerHeight - margin) top = anchorRect.top - popRect.height - 6;
+  top = Math.max(margin, top);
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
+}
 
 function renderScheduleView() {
   document.getElementById('monthView').classList.toggle('hidden', viewMode !== 'month');
@@ -429,14 +464,13 @@ function openQuickAddWeek(cell) {
   const label = isOpen ? 'New open shift' : `New shift — ${managerEmployees.find(e => e.id === Number(empId))?.name || ''}`;
   const pop = document.createElement('div');
   pop.className = 'quick-pop';
-  pop.style.left = '0px'; pop.style.top = '30px';
   pop.innerHTML = `<div class="qp-head">${escapeHtml(label)}<br><span style="font-weight:400;color:var(--text-muted)">${cell.dataset.date}</span></div>
     <div class="qp-row">
       <label>Start<input type="time" id="qpwStart" value="09:00"></label>
       <label>End<input type="time" id="qpwEnd" value="17:00"></label>
     </div>
     <div class="qp-actions"><button type="button" class="button secondary" id="qpwCancel">Cancel</button><button class="button" type="button" id="qpwSave">Add shift</button></div>`;
-  cell.appendChild(pop);
+  positionPopover(pop, cell.getBoundingClientRect());
   pop.querySelector('#qpwCancel').addEventListener('click', ev => { ev.stopPropagation(); closeAnyPopover(); });
   pop.querySelector('#qpwSave').addEventListener('click', async ev => {
     ev.stopPropagation();
@@ -459,12 +493,27 @@ function openEditPopover(el, shiftId) {
   if (!shift) return;
   const employee = shift.employeeId ? managerEmployees.find(e => e.id === shift.employeeId) : null;
   const pop = document.createElement('div');
-  pop.className = 'quick-pop';
-  pop.style.left = '0px'; pop.style.top = '30px';
-  pop.innerHTML = `<div class="qp-head">${employee ? escapeHtml(employee.name) : 'Open shift'} · ${shift.startTime}–${shift.endTime}${shift.isDraft ? ' · draft' : ''}${shift.status === 'Pending_Swap' ? ' · swap pending' : ''}</div>
-    <div class="qp-actions"><button type="button" class="qp-del" id="qpDelete">Delete shift</button><button class="button secondary" type="button" id="qpClose">Close</button></div>`;
-  el.parentElement.appendChild(pop);
+  pop.className = 'quick-pop quick-pop-wide';
+  pop.innerHTML = `<div class="qp-head">${employee ? escapeHtml(employee.name) : 'Open shift'}${shift.isDraft ? ' · draft' : ''}${shift.status === 'Pending_Swap' ? ' · swap pending' : ''}</div>
+    <div class="qp-row">
+      <label>Start<input type="time" id="qpeStart" value="${shift.startTime}"></label>
+      <label>End<input type="time" id="qpeEnd" value="${shift.endTime}"></label>
+    </div>
+    <div class="qp-actions"><button type="button" class="qp-del" id="qpDelete">Delete shift</button><button class="button secondary" type="button" id="qpClose">Close</button><button class="button" type="button" id="qpSaveEdit">Save</button></div>`;
+  positionPopover(pop, el.getBoundingClientRect());
   pop.querySelector('#qpClose').addEventListener('click', ev => { ev.stopPropagation(); closeAnyPopover(); });
+  pop.querySelector('#qpSaveEdit').addEventListener('click', async ev => {
+    ev.stopPropagation();
+    const startTime = pop.querySelector('#qpeStart').value;
+    const endTime = pop.querySelector('#qpeEnd').value;
+    try {
+      await api(`/api/scheduling/shifts/${shiftId}`, {method:'PATCH', body:JSON.stringify({employeeId: shift.employeeId, date: shift.date, startTime, endTime})});
+      selectShift(null);
+      closeAnyPopover();
+      toast('Shift updated.', 'success');
+      if (viewMode === 'day') await loadDay(); else await loadWeek();
+    } catch (error) { toast(error.message, 'error'); }
+  });
   pop.querySelector('#qpDelete').addEventListener('click', async ev => {
     ev.stopPropagation();
     if (shift.employeeId && !(await confirmDialog(`Delete this assigned shift (${shift.startTime}–${shift.endTime})? This can't be undone.`, { danger: true, confirmLabel: 'Delete shift' }))) return;
@@ -482,6 +531,9 @@ function openEditPopover(el, shiftId) {
 const HOUR_START = 7, HOUR_END = 24, HOUR_W = 42;
 const fmtHourLabel = (h) => { const hh = h % 24; const ap = hh >= 12 ? 'pm' : 'am'; const h12 = hh % 12 === 0 ? 12 : hh % 12; return `${h12}${ap}`; };
 const parseHourDec = (t) => { const [h, m] = t.split(':').map(Number); return h + m / 60; };
+const endHourDec = (endTime) => (endTime === '24:00' || endTime === '00:00') ? 24 : parseHourDec(endTime);
+const toHHMM = (hourDec) => { const h = Math.floor(hourDec); const m = hourDec % 1 ? 30 : 0; return `${String(h % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`; };
+const snapHour = (x) => HOUR_START + Math.round((x / HOUR_W) * 2) / 2;
 
 async function loadDay() {
   document.getElementById('dayView').innerHTML = '<div class="loading-state">Loading schedule…</div>';
@@ -510,10 +562,13 @@ function renderDay() {
 
   function blockHTML(s) {
     const left = (parseHourDec(s.startTime) - HOUR_START) * HOUR_W;
-    const endDec = (s.endTime === '24:00' || s.endTime === '00:00') ? 24 : parseHourDec(s.endTime);
-    const width = Math.max((endDec - parseHourDec(s.startTime)) * HOUR_W, 30);
+    const width = Math.max((endHourDec(s.endTime) - parseHourDec(s.startTime)) * HOUR_W, 30);
     const warning = shiftWarning(s);
-    return `<div class="shift-block ${!s.employeeId ? 'open-shift' : ''} ${s.status === 'Pending_Swap' ? 'pending-swap' : ''} ${warning ? 'warn' : ''}" style="left:${left}px;width:${width}px" data-shift-id="${s.id}" draggable="true" ${warning ? `title="${escapeHtml(warning)}"` : ''}>${s.startTime}–${s.endTime}</div>`;
+    return `<div class="shift-block ${!s.employeeId ? 'open-shift' : ''} ${s.status === 'Pending_Swap' ? 'pending-swap' : ''}" style="left:${left}px;width:${width}px" data-shift-id="${s.id}" draggable="true" ${warning ? `title="${escapeHtml(warning)}"` : ''}>
+      <span class="resize-handle resize-left" draggable="false" data-resize="start"></span>
+      <span class="block-label">${s.startTime}–${s.endTime}${warning ? ' ⚠️' : ''}</span>
+      <span class="resize-handle resize-right" draggable="false" data-resize="end"></span>
+    </div>`;
   }
   function trackHTML(shifts, empId, isOpen) {
     let nowLine = '';
@@ -573,10 +628,104 @@ function renderDay() {
   el.querySelectorAll('[data-employee-card]').forEach(button => button.addEventListener('click', e => { e.stopPropagation(); try { openEmployeeCard(Number(button.dataset.employeeCard)); } catch (error) { toast(error.message, 'error'); } }));
   el.querySelectorAll('.shift-block').forEach(block => {
     block.addEventListener('click', e => { e.stopPropagation(); selectShift(managerShifts.find(s => s.id === Number(block.dataset.shiftId))); openEditPopover(block, Number(block.dataset.shiftId)); });
-    block.addEventListener('dragstart', e => e.dataTransfer.setData('shiftId', block.dataset.shiftId));
+    block.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('shiftId', block.dataset.shiftId);
+      // Where within the block the user grabbed it, so dropping preserves that same grab
+      // point relative to the new time slot instead of snapping the block's left edge to
+      // the cursor.
+      e.dataTransfer.setData('offsetX', String(e.clientX - block.getBoundingClientRect().left));
+    });
+    // Dragging an edge resizes that boundary only (start or end); dragging the block body
+    // (native HTML5 dragstart/drop above and on the track below) moves the whole shift,
+    // keeping its duration. Plain mouse events here rather than HTML5 DnD, since a resize
+    // needs live pixel feedback within the same track, not a drop target.
+    block.querySelectorAll('[data-resize]').forEach(handle => {
+      handle.addEventListener('mousedown', e => {
+        e.preventDefault(); e.stopPropagation();
+        const shift = managerShifts.find(s => s.id === Number(block.dataset.shiftId));
+        if (!shift) return;
+        const track = block.parentElement;
+        const rect = track.getBoundingClientRect();
+        const side = handle.dataset.resize;
+        const startDec0 = parseHourDec(shift.startTime);
+        const endDec0 = endHourDec(shift.endTime);
+        let pendingHour = side === 'start' ? startDec0 : endDec0;
+        let moved = false;
+        const onMove = (ev) => {
+          moved = true;
+          const x = Math.max(0, Math.min(ev.clientX - rect.left, (HOUR_END - HOUR_START) * HOUR_W));
+          let hourDec = snapHour(x);
+          if (side === 'start') {
+            hourDec = Math.max(HOUR_START, Math.min(hourDec, endDec0 - 0.5));
+            block.style.left = `${(hourDec - HOUR_START) * HOUR_W}px`;
+            block.style.width = `${Math.max((endDec0 - hourDec) * HOUR_W, 30)}px`;
+          } else {
+            hourDec = Math.min(HOUR_END, Math.max(hourDec, startDec0 + 0.5));
+            block.style.width = `${Math.max((hourDec - startDec0) * HOUR_W, 30)}px`;
+          }
+          pendingHour = hourDec;
+        };
+        const onUp = async () => {
+          document.removeEventListener('mousemove', onMove);
+          // The mouseup that ends this resize still produces a native trailing `click` on
+          // the handle (mousedown/mouseup on the same element always does, even with
+          // plain mouse-event dragging in between) -- swallow it in the capture phase so
+          // it doesn't also bubble into the block's click handler and pop open the edit
+          // popover right on top of the shift the user just resized.
+          if (moved) document.addEventListener('click', ev => ev.stopPropagation(), { capture: true, once: true });
+          const startTime = side === 'start' ? toHHMM(pendingHour) : shift.startTime;
+          const endTime = side === 'end' ? toHHMM(pendingHour) : shift.endTime;
+          if (startTime === shift.startTime && endTime === shift.endTime) return;
+          try {
+            await api(`/api/scheduling/shifts/${shift.id}`, {method:'PATCH', body:JSON.stringify({employeeId:shift.employeeId, date:shift.date, startTime, endTime})});
+            toast('Shift updated.', 'success');
+            await loadDay();
+          } catch (error) { toast(error.message, 'error'); await loadDay(); }
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp, { once: true });
+      });
+    });
   });
   el.querySelectorAll('.emp-row-track').forEach(track => {
-    track.addEventListener('click', e => { if (e.target.closest('.shift-block')) return; openQuickAddDay(track, e); });
+    // Dragging across empty time draws out a shift's start/end directly (like a calendar
+    // app); a plain click (no meaningful movement) falls back to the old fixed-length
+    // quick-add. Plain `mousedown`/`mousemove` rather than HTML5 drag-and-drop, since this
+    // is drawing a new range on the track itself, not moving a draggable element — that's
+    // the separate dragstart/dragover/drop wiring below, for reassigning existing shifts.
+    track.addEventListener('mousedown', e => {
+      if (e.target.closest('.shift-block') || e.button !== 0) return;
+      e.preventDefault();
+      const rect = track.getBoundingClientRect();
+      const trackWidth = (HOUR_END - HOUR_START) * HOUR_W;
+      const startX = Math.max(0, Math.min(e.clientX - rect.left, trackWidth));
+      let currentX = startX;
+      let dragged = false;
+      const ghost = document.createElement('div');
+      ghost.className = 'drag-create-ghost';
+      track.appendChild(ghost);
+      const updateGhost = () => {
+        ghost.style.left = `${Math.min(startX, currentX)}px`;
+        ghost.style.width = `${Math.max(Math.abs(currentX - startX), 2)}px`;
+      };
+      updateGhost();
+      const onMove = (ev) => {
+        currentX = Math.max(0, Math.min(ev.clientX - rect.left, trackWidth));
+        if (Math.abs(currentX - startX) > 4) dragged = true;
+        updateGhost();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        ghost.remove();
+        if (dragged) {
+          openQuickAddDay(track, { clientX: rect.left + Math.min(startX, currentX) }, { endClientX: rect.left + Math.max(startX, currentX) });
+        } else {
+          openQuickAddDay(track, e);
+        }
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp, { once: true });
+    });
     track.addEventListener('dragover', e => { e.preventDefault(); track.classList.add('drag-over'); });
     track.addEventListener('dragleave', () => track.classList.remove('drag-over'));
     track.addEventListener('drop', async e => {
@@ -584,40 +733,56 @@ function renderDay() {
       const shift = managerShifts.find(s => s.id === Number(e.dataTransfer.getData('shiftId')));
       if (!shift) return;
       const empId = track.dataset.empId ? Number(track.dataset.empId) : null;
-      if (shift.employeeId === empId && !e.shiftKey) return;
+      // Dropping onto a track moves the whole shift to the time under the cursor (keeping
+      // its original duration), whether that's a new employee's row or the same one --
+      // dropping back on the same employee's row is exactly how you'd shift a shift's time
+      // without reassigning it, so that case can't be treated as a no-op.
+      const rect = track.getBoundingClientRect();
+      const offsetX = Number(e.dataTransfer.getData('offsetX')) || 0;
+      const duration = shiftHours(shift);
+      let newStartHour = snapHour(e.clientX - rect.left - offsetX);
+      newStartHour = Math.max(HOUR_START, Math.min(HOUR_END - duration, newStartHour));
+      const startTime = toHHMM(newStartHour);
+      const endTime = toHHMM(newStartHour + duration);
+      if (shift.employeeId === empId && startTime === shift.startTime && endTime === shift.endTime && !e.shiftKey) return;
       try {
         if (e.shiftKey) {
-          await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:shift.departmentId, employeeId:empId, date:shift.date, startTime:shift.startTime, endTime:shift.endTime})});
+          await api('/api/scheduling/shifts', {method:'POST', body:JSON.stringify({departmentId:shift.departmentId, employeeId:empId, date:shift.date, startTime, endTime})});
           toast('Shift duplicated.', 'success');
         } else {
-          await api(`/api/scheduling/shifts/${shift.id}`, {method:'PATCH', body:JSON.stringify({employeeId:empId, date:shift.date, startTime:shift.startTime, endTime:shift.endTime})});
+          await api(`/api/scheduling/shifts/${shift.id}`, {method:'PATCH', body:JSON.stringify({employeeId:empId, date:shift.date, startTime, endTime})});
         }
         await loadDay();
       } catch (error) { toast(error.message, 'error'); }
     });
   });
 }
-function openQuickAddDay(track, e) {
+function openQuickAddDay(track, e, opts = {}) {
   closeAnyPopover();
   const rect = track.getBoundingClientRect();
   const x = e.clientX - rect.left;
-  let startHour = HOUR_START + Math.round((x / HOUR_W) * 2) / 2;
+  let startHour = snapHour(x);
   startHour = Math.max(HOUR_START, Math.min(HOUR_END - 1, startHour));
-  const endHour = Math.min(HOUR_END, startHour + 4);
+  let endHour;
+  if (opts.endClientX != null) {
+    const endX = opts.endClientX - rect.left;
+    endHour = snapHour(endX);
+    endHour = Math.max(startHour + 0.5, Math.min(HOUR_END, endHour));
+  } else {
+    endHour = Math.min(HOUR_END, startHour + 4);
+  }
   const empId = track.dataset.empId;
   const isOpen = track.dataset.open === '1';
   const label = isOpen ? 'New open shift' : `New shift — ${managerEmployees.find(e => e.id === Number(empId))?.name || ''}`;
-  const toHHMM = (hourDec) => { const h = Math.floor(hourDec); const m = hourDec % 1 ? 30 : 0; return `${String(h % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`; };
   const pop = document.createElement('div');
   pop.className = 'quick-pop';
-  pop.style.left = `${Math.max(0, x - 20)}px`; pop.style.top = '54px';
   pop.innerHTML = `<div class="qp-head">${escapeHtml(label)}</div>
     <div class="qp-row">
       <label>Start<input type="time" id="qpStart" value="${toHHMM(startHour)}"></label>
       <label>End<input type="time" id="qpEnd" value="${toHHMM(endHour)}"></label>
     </div>
     <div class="qp-actions"><button type="button" class="button secondary" id="qpCancel">Cancel</button><button class="button" type="button" id="qpSave">Add shift</button></div>`;
-  track.appendChild(pop);
+  positionPopover(pop, { left: rect.left + x, top: rect.top, bottom: rect.bottom });
   pop.querySelector('#qpCancel').addEventListener('click', ev => { ev.stopPropagation(); closeAnyPopover(); });
   pop.querySelector('#qpSave').addEventListener('click', async ev => {
     ev.stopPropagation();
@@ -1274,3 +1439,10 @@ if (isManager) { document.getElementById('departmentsSettingsRow').classList.rem
     });
   });
 } else { loadEmployeeSchedule().catch(e => toast(e.message, 'error')); document.getElementById('refreshEmployee').onclick = () => loadEmployeeSchedule().catch(e => toast(e.message, 'error')); document.getElementById('editAvailability').onclick = async () => { try { const current = (await api('/api/scheduling/availability')).weeklyAvailability || {}; const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']; document.getElementById('availabilityRows').innerHTML = days.map(day => { const slot = current[day]?.[0]; return `<label class="availability-row"><span><input type="checkbox" data-day-enabled="${day}" ${slot ? 'checked' : ''}/> ${day}</span><input data-day-start="${day}" type="time" value="${slot?.start || '09:00'}" ${slot ? '' : 'disabled'}/><input data-day-end="${day}" type="time" value="${slot?.end || '17:00'}" ${slot ? '' : 'disabled'}/></label>`; }).join(''); document.querySelectorAll('[data-day-enabled]').forEach(box => box.addEventListener('change', () => document.querySelectorAll(`[data-day-start="${box.dataset.dayEnabled}"], [data-day-end="${box.dataset.dayEnabled}"]`).forEach(input => input.disabled = !box.checked))); document.getElementById('availabilityModal').classList.remove('hidden'); } catch(e) { toast(e.message, 'error'); }}; document.getElementById('availabilityForm').onsubmit = async e => { e.preventDefault(); const availability = {}; document.querySelectorAll('[data-day-enabled]').forEach(box => { if (box.checked) availability[box.dataset.dayEnabled] = [{start:document.querySelector(`[data-day-start="${box.dataset.dayEnabled}"]`).value, end:document.querySelector(`[data-day-end="${box.dataset.dayEnabled}"]`).value}]; }); await withBusy(e.target.querySelector('button[type="submit"]'), 'Saving…', async () => { try { await api('/api/scheduling/availability', {method:'PATCH', body:JSON.stringify({weeklyAvailability:availability})}); closeModal('availabilityModal'); toast('Availability saved.', 'success'); } catch(error) { toast(error.message, 'error'); } }); }; document.querySelectorAll('[data-employee-panel]').forEach(tab => tab.addEventListener('click', () => { document.querySelectorAll('[data-employee-panel]').forEach(t => t.classList.toggle('active', t === tab)); document.getElementById('myScheduleFeed').classList.toggle('hidden', tab.dataset.employeePanel !== 'my'); document.getElementById('eligibleFeed').classList.toggle('hidden', tab.dataset.employeePanel !== 'eligible'); })); }
+
+// Activate whichever panel the URL actually points at (a refresh, a direct link, or a
+// bookmark should land the user back where they were, not always on the dashboard), then
+// normalize the address bar so /app and /app/dashboard agree on one canonical URL.
+const initialPanel = panelFromPath(window.location.pathname);
+if (initialPanel !== 'dashboard') switchToPanel(initialPanel, { pushHistory: false });
+history.replaceState({ panel: initialPanel }, '', `/app/${initialPanel}`);

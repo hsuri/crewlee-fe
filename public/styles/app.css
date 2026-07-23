@@ -22,7 +22,12 @@ body {
   max-width: 1440px;
   margin: 0 auto;
   height: 64px;
-  display: flex;
+  /* Grid, not flex -- equal 1fr side columns keep the middle (nav-tabs) column truly
+     centered on the bar regardless of how wide the logo vs. user-chip/settings content
+     is, which `margin-left: auto` on nav-right (the old flex approach) can't do since it
+     only pushes nav-right to the far edge rather than centering nav-tabs in between. */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: stretch;
   gap: 32px;
 }
@@ -33,14 +38,13 @@ body {
   font-weight: 700;
   font-size: 17px;
   letter-spacing: -0.3px;
-  flex: none;
+  justify-self: start;
 }
 .nav-right {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-left: auto;
-  flex: none;
+  justify-self: end;
 }
 .user-chip {
   display: flex;
@@ -955,13 +959,25 @@ a.button { display: inline-block; text-decoration: none; }
 .shift-block {
   position: absolute; top: 7px; height: 38px; border-radius: 9px; background: var(--accent-light-strong);
   border: 1px solid var(--accent); color: var(--accent-hover); font-size: 11px; font-weight: 700;
-  display: flex; align-items: center; padding: 0 9px; overflow: hidden; white-space: nowrap; cursor: pointer;
+  display: flex; align-items: stretch; overflow: hidden; cursor: grab; user-select: none;
   box-shadow: var(--shadow-sm); z-index: 2;
 }
 .shift-block:hover { box-shadow: var(--shadow-md); }
 .shift-block.open-shift { background: var(--warn-light); border-color: var(--warn); color: #8a6420; border-style: dashed; }
 .shift-block.pending-swap { border-style: dotted; }
-.shift-block.warn::after { content: '⚠️'; margin-left: 5px; }
+.shift-block .block-label {
+  flex: 1; display: flex; align-items: center; padding: 0 9px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.shift-block .resize-handle { flex: 0 0 7px; cursor: ew-resize; }
+.shift-block .resize-handle:hover { background: rgba(58, 46, 42, 0.12); }
+.shift-block.open-shift .resize-handle:hover { background: rgba(138, 100, 32, 0.15); }
+
+.drag-create-ghost {
+  position: absolute; top: 7px; height: 38px; border-radius: 9px;
+  background: var(--accent-light); border: 1.5px dashed var(--accent);
+  pointer-events: none; z-index: 3;
+}
 
 .now-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #B4483A; z-index: 3; pointer-events: none; }
 .now-line::before { content: 'now'; position: absolute; top: -16px; left: -12px; font-size: 9px; font-weight: 700; color: #B4483A; }
@@ -970,14 +986,18 @@ a.button { display: inline-block; text-decoration: none; }
 .timeline-inner { min-width: 900px; }
 
 .quick-pop {
-  position: absolute; z-index: 50; width: 236px; background: var(--white); border: 1px solid var(--border);
+  /* Fixed (viewport) positioning, appended straight to <body> by positionPopover() in
+     app.js -- not nested inside the scrollable week/day grid -- so it can never end up
+     clipped below the grid's own scroll area and always renders above the grid content. */
+  position: fixed; z-index: 260; width: 236px; background: var(--white); border: 1px solid var(--border);
   border-radius: 12px; box-shadow: var(--shadow-lg); padding: 14px;
 }
+.quick-pop.quick-pop-wide { width: 280px; }
 .quick-pop .qp-head { font-size: 12px; font-weight: 700; margin-bottom: 10px; line-height: 1.4; }
 .quick-pop .qp-row { display: flex; gap: 8px; margin-bottom: 10px; }
 .quick-pop label { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 10.5px; font-weight: 700; color: var(--text-secondary); }
 .quick-pop input[type="time"] { font: 500 13px inherit; padding: 6px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); }
-.quick-pop .qp-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.quick-pop .qp-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .quick-pop .qp-del { margin-right: auto; background: none; border: 0; color: #B4483A; font: 600 11.5px inherit; padding: 6px 4px; cursor: pointer; }
 .quick-pop .qp-del:hover { text-decoration: underline; }
 
