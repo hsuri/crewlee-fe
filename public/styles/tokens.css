@@ -5,12 +5,17 @@
   --accent:         #D97757;
   --accent-hover:   #C4653E;
   --accent-light:   #FEF3EC;
+  --accent-light-strong: #FBE4D8;
   --navy:           #3A2E2A;
   --slate:          #5C4A42;
   --bg:             #FAF8F4;
   --white:          #FFFFFF;
+  --surface-2:      #FBF7F2;
   --border:         #E8E0D8;
   --success:        #6B8E23;
+  --success-light:  #F1F5E4;
+  --warn:           #C08A2E;
+  --warn-light:     #FBF0DD;
   --text-primary:   #3A2E2A;
   --text-secondary: #6B5A52;
   --text-muted:     #A08C84;
