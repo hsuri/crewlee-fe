@@ -8,7 +8,6 @@ const passwordInput = document.getElementById('password');
 const confirmInput = document.getElementById('confirmPassword');
 const heading = document.getElementById('loginHeading');
 const subtext = document.getElementById('loginSubtext');
-const hint = document.getElementById('loginHint');
 const tabLogin = document.getElementById('tabLogin');
 const tabSignup = document.getElementById('tabSignup');
 
@@ -41,7 +40,6 @@ function enterSignupMode() {
   heading.textContent = 'Sign up';
   subtext.textContent = "Enter the email your manager or admin used to invite you.";
   submitBtn.textContent = 'Continue';
-  hint.classList.add('hidden');
   errorDiv.classList.add('hidden');
   emailInput.focus();
 }
@@ -60,7 +58,6 @@ function enterSetPasswordMode(email) {
   heading.textContent = 'Create your password';
   subtext.textContent = `Finish setting up ${email}.`;
   submitBtn.textContent = 'Create Password';
-  hint.classList.add('hidden');
   errorDiv.classList.add('hidden');
   passwordInput.focus();
 }
@@ -79,7 +76,6 @@ function enterLoginMode() {
   heading.textContent = 'Sign in';
   subtext.textContent = "Access your restaurant's workspace.";
   submitBtn.textContent = 'Sign In';
-  hint.classList.remove('hidden');
   errorDiv.classList.add('hidden');
 }
 
