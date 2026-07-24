@@ -25,7 +25,7 @@ Still **no build step, no bundler, no frontend framework** — `scripts/*.js` ar
 | Route | File | Purpose |
 |---|---|---|
 | `/` | `pages/index.html` | Marketing/waitlist landing page. Only page that uses `styles/marketing.css` and `scripts/marketing.js`. |
-| `/login` | `pages/login.html` | Email/password login → `POST /api/auth/login` → stores `{token, user}` via `scripts/lib/session.js` → redirects to `/app`. If the same email+password matches accounts at more than one restaurant, the backend returns `{accounts: [...]}` instead of a single `{token, user}` — `login.js`'s `showAccountPicker` swaps the form for a "which restaurant?" list; picking one just finishes login with that already-issued token (no second round trip). |
+| `/login` | `pages/login.html` | Email/password login → `POST /api/auth/login` → stores `{token, user}` via `scripts/lib/session.js` → redirects to `/app`. |
 | `/app` | `pages/app.html` | Logged-in dashboard shell. Three tabs: **Schedule** and **Announcements** (fully built — see below), "Ask (RAG)" (placeholder, not implemented). |
 | `/admin` | `pages/admin.html` | Password-gated internal waitlist dashboard (stat cards, table, CSV export of `/api/waitlist`). Unrelated to scheduling. |
 
@@ -59,8 +59,7 @@ Role-gated the same way as Schedule:
 ## Conventions
 
 - **Shared JS lives in `scripts/lib/`** (`api.js`, `toast.js`, `session.js`) and is imported via native `<script type="module">` — no bundler, since browsers run ES modules directly. Page-specific logic (date formatting, DOM wiring, the scheduling calendar) stays in that page's own `scripts/<page>.js` rather than being pulled into `lib/` — only pull something into `lib/` once a second page actually needs it, don't pre-emptively generalize.
-- `scripts/lib/session.js` owns the `sessionStorage` keys used across pages — `crewleeSession` (staff login, `{token, user}`, read/written via `getSession`/`setSession`/`clearSession`), `crewleeAccounts` (sibling restaurant accounts from an ambiguous multi-restaurant login, `getAccounts`/`setAccounts` — see login's account picker above; `clearSession` clears this too), and `adminToken` (waitlist admin panel, via `getAdminToken`/`setAdminToken`/`clearAdminToken`). Go through these rather than touching `sessionStorage` directly, so there's one place that knows the key names and shapes.
-- **Restaurant switcher** (`app.html`'s settings panel, `#switchRestaurantRow`): only renders when `getAccounts()` has more than one entry — i.e. only after a login that hit the ambiguous-password picker, since that's the only time the frontend holds a valid token for a sibling account. Clicking a sibling calls `setSession` with its already-issued `{token, user}` and reloads, no re-auth needed (each restaurant is a fully separate `users` row/token — see `crewlee-be/CLAUDE.md`'s Auth section). If the person instead used a different password per restaurant, login disambiguates on its own with no picker, so there's no cached sibling token to switch to — `user.otherRestaurants` (names only) drives a plain informational note there instead, telling them to log in separately.
+- `scripts/lib/session.js` owns both `sessionStorage` keys used across pages — `crewleeSession` (staff login, `{token, user}`, read/written via `getSession`/`setSession`/`clearSession`) and `adminToken` (waitlist admin panel, via `getAdminToken`/`setAdminToken`/`clearAdminToken`). Go through these rather than touching `sessionStorage` directly, so there's one place that knows the key names and shapes.
 - CSS is one file per page under `styles/`, hand-formatted with generous spacing and blank lines between rule groups — match that when editing, rather than writing dense single-line CSS.
 
 ## Known limitations

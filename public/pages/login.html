@@ -33,13 +33,9 @@
         <button type="submit" id="submitBtn">Sign In</button>
         <div class="error hidden" id="loginError"></div>
       </form>
-      <!-- Shown instead of the form when the same email+password matched more than one
-           restaurant account (see login.js's handling of POST /api/auth/login's `accounts`
-           response) -- each button is already fully authenticated, so picking one just
-           stores that account's session rather than submitting anything else. -->
-      <div class="account-picker hidden" id="accountPicker">
-        <p>This email is used at more than one restaurant. Which one?</p>
-        <div class="account-list" id="accountList"></div>
+      <div class="hint" id="loginHint">
+        Demo accounts (password <code>password123</code>):<br />
+        <code>manager@demo.com</code> · <code>foh@demo.com</code> · <code>boh@demo.com</code>
       </div>
     </div>
 
