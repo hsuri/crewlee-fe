@@ -19,3 +19,16 @@ export function createApiClient(getToken) {
     return data;
   };
 }
+
+// No Authorization header at all -- for the public Guest AI page, which has no session/token
+// (a guest is never authenticated). Same request/error shape as createApiClient otherwise, so
+// callers handle both identically.
+export async function publicApi(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || data.error || 'Something went wrong');
+  return data;
+}
