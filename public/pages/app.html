@@ -26,6 +26,7 @@
           <div class="tab" data-panel="schedule">Schedule</div>
           <div class="tab" data-panel="announcements">Announcements</div>
           <div class="tab" data-panel="rag">Ask Crewlee</div>
+          <div class="tab hidden" data-panel="guestai" id="guestAiTab">Guest AI</div>
         </div>
         <div class="nav-right">
           <div class="user-chip">
@@ -127,6 +128,73 @@
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </form>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-guestai">
+        <div class="board-header">
+          <div class="board-heading">
+            <p class="eyebrow">Guest Experience</p>
+            <h1>Guest AI</h1>
+            <p>Give your guests instant answers about your menu, ingredients, allergens, dietary restrictions, and food preparation.</p>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card">
+            <div class="card-head"><h2>Status</h2></div>
+            <div class="guestai-status-row">
+              <span class="status-pill off" id="guestAiStatusPill">Loading…</span>
+              <button class="button secondary" id="guestAiToggleBtn" type="button" disabled>—</button>
+            </div>
+            <p class="guestai-status-help" id="guestAiStatusHelp">Turn this on once you've approved the knowledge guests can see below.</p>
+          </div>
+
+          <div class="card span2">
+            <div class="card-head"><h2>Guest Knowledge</h2></div>
+            <p class="guestai-knowledge-help">Choose which of your documents Guest AI can use to answer customer questions. Everything else — recipes, SOPs, internal notes — stays completely invisible to guests.</p>
+            <div class="guestai-knowledge-list" id="guestAiKnowledgeList"><div class="loading-state">Loading documents…</div></div>
+          </div>
+
+          <div class="card span2">
+            <div class="card-head"><h2>Test Guest AI</h2></div>
+            <p>Try the exact experience guests will see — answers use only the guest-approved knowledge above, and sources are shown here so you can verify them (guests don't see this part).</p>
+            <div class="chat-shell guestai-test-shell">
+              <div class="chat-thread" id="guestAiTestThread"></div>
+              <form class="chat-input-bar" id="guestAiTestForm">
+                <input id="guestAiTestQuestion" type="text" placeholder="e.g. Are the fries gluten-free?" autocomplete="off" required />
+                <button class="send-btn" type="submit" aria-label="Ask">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div class="card span2">
+            <div class="card-head"><h2>Your Guest QR Code</h2></div>
+            <p>Place this QR code on tables, menus, or other guest-facing materials.</p>
+            <div class="guestai-qr-row">
+              <img class="guestai-qr-img" id="guestAiQrImg" alt="Guest AI QR code" width="180" height="180" />
+              <div class="guestai-qr-actions">
+                <div class="guestai-link-row">
+                  <input type="text" id="guestAiLinkInput" readonly />
+                  <button class="button secondary" id="guestAiCopyLinkBtn" type="button">Copy Link</button>
+                </div>
+                <a class="button" id="guestAiDownloadQrBtn" download>Download QR Code</a>
+                <button class="button secondary" id="guestAiPrintCardBtn" type="button">Print Table Card</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card span2">
+            <div class="card-head"><h2>Guest AI Activity</h2></div>
+            <div class="hours-row guestai-stats-row">
+              <div class="hours-tile"><div class="n" id="guestAiStatToday">0</div><div class="lbl">Questions today</div></div>
+              <div class="hours-tile"><div class="n" id="guestAiStatWeek">0</div><div class="lbl">This week</div></div>
+              <div class="hours-tile next"><div class="n" id="guestAiStatUnanswered">0</div><div class="lbl">Unanswered (7d)</div></div>
+            </div>
+            <div id="guestAiTopQuestions"></div>
+          </div>
         </div>
       </div>
 
@@ -437,6 +505,16 @@
           </div>
         </div>
         <button class="logout-btn" id="logoutBtn">Log Out</button>
+      </div>
+    </div>
+    <!-- Only ever shown via window.print() (see #guestAiPrintCardBtn in app.js) -- @media print
+         in app.css hides everything else under <body> and shows just this. -->
+    <div class="guestai-print-card" id="guestAiPrintCard">
+      <div class="guestai-print-card-inner">
+        <h1 id="guestAiPrintCardName">Restaurant</h1>
+        <p class="guestai-print-card-lead">Have a food question?</p>
+        <p>Scan to ask our AI about ingredients, allergens &amp; dietary options.</p>
+        <img id="guestAiPrintCardQr" alt="Guest AI QR code" width="260" height="260" />
       </div>
     </div>
     <script type="module" src="/scripts/app.js"></script>

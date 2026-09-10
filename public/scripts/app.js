@@ -44,7 +44,7 @@ fetch('/api/me', { headers: { Authorization: `Bearer ${session.token}` } })
 // URL bookkeeping; loadPanelData carries the per-panel side effects (currently only
 // Settings needs to lazy-load its data) so they run the same way whether the panel was
 // reached by clicking a tab, loading a direct URL, or hitting browser back/forward.
-const VALID_PANELS = ['dashboard', 'schedule', 'announcements', 'rag', 'settings'];
+const VALID_PANELS = ['dashboard', 'schedule', 'announcements', 'rag', 'guestai', 'settings'];
 function panelFromPath(pathname) {
   const segment = pathname.replace(/^\/app\/?/, '');
   return VALID_PANELS.includes(segment) ? segment : 'dashboard';
@@ -56,6 +56,9 @@ async function loadPanelData(panelName) {
     renderDepartmentsSettings();
     if (!managerAllEmployees.length) await loadEmployees();
     renderTeamSettings();
+  }
+  if (panelName === 'guestai' && isManager) {
+    await Promise.all([loadGuestAiSettings(), loadGuestAiKnowledge(), loadGuestAiAnalytics()]);
   }
 }
 
@@ -1147,6 +1150,170 @@ function setRagSourceMode(mode) {
 }
 document.querySelectorAll('input[name="ragSource"]').forEach(radio => radio.addEventListener('change', () => setRagSourceMode(radio.value)));
 
+// ── Guest AI (manager dashboard) ─────────────────────────────────────────────────────────────
+// Mirrors the Ask Crewlee patterns above (module-scoped array + render-from-scratch + api()
+// client + try/catch-to-toast) rather than introducing a different state-management style for
+// one more panel.
+let guestAiSettings = null;
+let guestAiKnowledge = [];
+let guestAiTestThread = [];
+
+function renderGuestAiStatus() {
+  const pill = document.getElementById('guestAiStatusPill');
+  const btn = document.getElementById('guestAiToggleBtn');
+  pill.textContent = guestAiSettings.enabled ? 'Active' : 'Off';
+  pill.className = `status-pill ${guestAiSettings.enabled ? 'on' : 'off'}`;
+  btn.textContent = guestAiSettings.enabled ? 'Turn Off' : 'Turn On';
+  btn.className = `button ${guestAiSettings.enabled ? 'secondary' : ''}`.trim();
+  btn.disabled = false;
+  document.getElementById('guestAiStatusHelp').textContent = guestAiSettings.enabled
+    ? 'Guests scanning your QR code can ask questions right now.'
+    : "Turn this on once you've approved the knowledge guests can see below.";
+}
+
+async function loadGuestAiSettings() {
+  guestAiSettings = await api('/api/guest-ai/settings');
+  renderGuestAiStatus();
+  const guestUrl = `${location.origin}/guest/${guestAiSettings.slug}`;
+  const qrUrl = `/guest/${guestAiSettings.slug}/qr.png`;
+  document.getElementById('guestAiLinkInput').value = guestUrl;
+  document.getElementById('guestAiQrImg').src = qrUrl;
+  const downloadBtn = document.getElementById('guestAiDownloadQrBtn');
+  downloadBtn.href = qrUrl;
+  downloadBtn.download = `guest-ai-qr-${guestAiSettings.slug}.png`;
+  document.getElementById('guestAiPrintCardName').textContent = guestAiSettings.restaurantName;
+  document.getElementById('guestAiPrintCardQr').src = qrUrl;
+}
+
+document.getElementById('guestAiToggleBtn').addEventListener('click', async () => {
+  const turningOff = guestAiSettings.enabled;
+  if (turningOff && !(await confirmDialog(
+    "Turn off Guest AI? Guests scanning your QR code will see a message that it isn't available.",
+    { danger: true, confirmLabel: 'Turn off' },
+  ))) return;
+  const btn = document.getElementById('guestAiToggleBtn');
+  btn.disabled = true;
+  try {
+    const result = await api('/api/guest-ai/settings', { method: 'PATCH', body: JSON.stringify({ enabled: !turningOff }) });
+    guestAiSettings.enabled = result.enabled;
+    toast(result.enabled ? 'Guest AI is now live.' : 'Guest AI turned off.', 'success');
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+  renderGuestAiStatus();
+});
+
+async function loadGuestAiKnowledge() {
+  document.getElementById('guestAiKnowledgeList').innerHTML = '<div class="loading-state">Loading documents…</div>';
+  guestAiKnowledge = await api('/api/guest-ai/knowledge');
+  renderGuestAiKnowledge();
+}
+function renderGuestAiKnowledge() {
+  const list = document.getElementById('guestAiKnowledgeList');
+  list.innerHTML = guestAiKnowledge.length ? guestAiKnowledge.map(d => `
+    <div class="guestai-knowledge-row">
+      <div class="guestai-knowledge-row-title">
+        <h3>${escapeHtml(d.title)}</h3>
+        <span class="rag-doc-type">${escapeHtml(d.docType)}</span>
+      </div>
+      <label class="guestai-toggle-label">
+        <input type="checkbox" data-guest-toggle="${d.id}" ${d.isGuestVisible ? 'checked' : ''} />
+        Visible to guests
+      </label>
+    </div>`).join('') : '<div class="empty-state">No documents yet — add one in Ask Crewlee\'s knowledge base first.</div>';
+  list.querySelectorAll('[data-guest-toggle]').forEach(input => input.addEventListener('change', async () => {
+    const id = input.dataset.guestToggle;
+    input.disabled = true;
+    try {
+      await api(`/api/guest-ai/knowledge/${id}`, { method: 'PATCH', body: JSON.stringify({ isGuestVisible: input.checked }) });
+      const doc = guestAiKnowledge.find(d => d.id === Number(id));
+      if (doc) doc.isGuestVisible = input.checked;
+      toast(input.checked ? 'Visible to guests.' : 'Hidden from guests.', 'success');
+    } catch (error) {
+      input.checked = !input.checked;
+      toast(error.message, 'error');
+    }
+    input.disabled = false;
+  }));
+}
+
+function renderGuestAiTestThread() {
+  const el = document.getElementById('guestAiTestThread');
+  if (!guestAiTestThread.length) {
+    el.innerHTML = `<div class="chat-empty">
+        <div class="glyph">🍽️</div>
+        <h2>Test what guests will see</h2>
+        <p>Ask a food or allergen question the way a guest would. Retrieval and grounding rules are identical to the live Guest AI — only sources are shown here, for your verification.</p>
+      </div>`;
+    return;
+  }
+  el.innerHTML = guestAiTestThread.map(m => {
+    const q = `<div class="msg-row q"><div class="msg q">${escapeHtml(m.question)}</div></div>`;
+    let a;
+    if (m.pending) {
+      a = `<div class="msg-row a"><div class="msg a"><div class="typing"><span></span><span></span><span></span></div></div></div>`;
+    } else if (m.error) {
+      a = `<div class="msg-row a"><div class="msg a error"><p>${escapeHtml(m.error)}</p></div></div>`;
+    } else {
+      const sources = m.citations && m.citations.length
+        ? `<div class="sources-row">${m.citations.map(c => `<span class="source-chip">${escapeHtml(c.documentTitle)}</span>`).join('')}</div>`
+        : '';
+      a = `<div class="msg-row a"><div class="msg a"><p>${escapeHtml(m.answer)}</p>${sources}</div></div>`;
+    }
+    return q + a;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+async function askGuestAiTest(question) {
+  question = (question || '').trim();
+  if (!question) return;
+  document.getElementById('guestAiTestQuestion').value = '';
+  guestAiTestThread.push({ question, pending: true });
+  renderGuestAiTestThread();
+  const sendBtn = document.querySelector('#guestAiTestForm button[type="submit"]');
+  sendBtn.disabled = true;
+  const entry = guestAiTestThread[guestAiTestThread.length - 1];
+  try {
+    const result = await api('/api/guest-ai/test-query', { method: 'POST', body: JSON.stringify({ question }) });
+    entry.pending = false;
+    entry.answer = result.answer;
+    entry.citations = result.citations || [];
+  } catch (error) {
+    entry.pending = false;
+    entry.error = error.message;
+  }
+  sendBtn.disabled = false;
+  renderGuestAiTestThread();
+}
+document.getElementById('guestAiTestForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  askGuestAiTest(document.getElementById('guestAiTestQuestion').value);
+});
+renderGuestAiTestThread();
+
+async function loadGuestAiAnalytics() {
+  const stats = await api('/api/guest-ai/analytics');
+  document.getElementById('guestAiStatToday').textContent = stats.questionsToday;
+  document.getElementById('guestAiStatWeek').textContent = stats.questionsThisWeek;
+  document.getElementById('guestAiStatUnanswered').textContent = stats.unansweredThisWeek;
+  const topEl = document.getElementById('guestAiTopQuestions');
+  topEl.innerHTML = stats.topQuestions.length
+    ? stats.topQuestions.map(q => `<div class="guestai-top-question"><span class="q">${escapeHtml(q.question)}</span><span class="n">${q.count}×</span></div>`).join('')
+    : '<div class="empty-state">No guest questions yet this week.</div>';
+}
+
+document.getElementById('guestAiCopyLinkBtn').addEventListener('click', async () => {
+  const input = document.getElementById('guestAiLinkInput');
+  try {
+    await navigator.clipboard.writeText(input.value);
+    toast('Guest link copied.', 'success');
+  } catch (error) {
+    input.select();
+    toast('Could not copy automatically — link is selected, press Cmd/Ctrl+C.', '');
+  }
+});
+document.getElementById('guestAiPrintCardBtn').addEventListener('click', () => window.print());
+
 async function openRagDocumentModal(documentId) {
   const form = document.getElementById('ragDocumentForm');
   form.reset();
@@ -1273,6 +1440,8 @@ async function loadEmployeeSchedule() { document.getElementById('myScheduleFeed'
 const isManager = session.user?.role === 'manager'; document.getElementById(isManager ? 'managerSchedule' : 'employeeSchedule').classList.remove('hidden');
 document.getElementById(isManager ? 'managerAnnouncements' : 'employeeAnnouncements').classList.remove('hidden');
 document.getElementById('newAnnouncement').classList.toggle('hidden', !isManager);
+// Guest AI is a manager-only configuration surface -- employees have no reason to see it.
+document.getElementById('guestAiTab').classList.toggle('hidden', !isManager);
 loadAnnouncements().catch(e => toast(e.message, 'error'));
 renderRagThread();
 loadRagDocuments().catch(e => toast(e.message, 'error'));

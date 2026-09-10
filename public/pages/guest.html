@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+    <title>Guest AI — Crewlee</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles/tokens.css" />
+    <link rel="stylesheet" href="/styles/guest.css" />
+  </head>
+  <body>
+    <div class="guest-shell">
+      <header class="guest-header">
+        <h1 id="guestRestaurantName">&nbsp;</h1>
+        <p class="guest-subtitle">Food &amp; Allergen Assistant</p>
+      </header>
+
+      <main class="guest-thread" id="guestThread">
+        <div class="guest-loading" id="guestLoading">Loading…</div>
+      </main>
+
+      <form class="guest-input-bar hidden" id="guestAskForm" autocomplete="off">
+        <input id="guestQuestion" type="text" placeholder="Ask about ingredients, allergens…" required maxlength="500" />
+        <button class="guest-send-btn" type="submit" aria-label="Ask">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </form>
+
+      <p class="guest-disclaimer">Answers are generated from information this restaurant has provided and may not be complete. Always tell your server about severe allergies.</p>
+    </div>
+
+    <script type="module" src="/scripts/guest.js"></script>
+  </body>
+</html>
